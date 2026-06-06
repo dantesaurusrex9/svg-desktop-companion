@@ -1,7 +1,11 @@
+import Foundation
 import OSLog
 
 enum AppLogger {
-    static let input = Logger(subsystem: "com.ptapayan.DesktopCompanion", category: "input")
-    static let hotKey = Logger(subsystem: "com.ptapayan.DesktopCompanion", category: "hotkey")
-    static let conversation = Logger(subsystem: "com.ptapayan.DesktopCompanion", category: "conversation")
+    private static let subsystem = Bundle.main.bundleIdentifier ?? "com.ptapayan.DesktopCompanion"
+
+    static let input = Logger(subsystem: subsystem, category: "input")
+    static let hotKey = Logger(subsystem: subsystem, category: "hotkey")
+    static let conversation = Logger(subsystem: subsystem, category: "conversation")
+    static let packages = Logger(subsystem: subsystem, category: "packages")
 }

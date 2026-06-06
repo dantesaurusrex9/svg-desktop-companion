@@ -1,25 +1,32 @@
 import Foundation
 
+enum ConversationTranscriptItem: Equatable {
+    case emptyPrompt(String)
+    case user(String)
+    case assistant(String)
+    case status(String)
+}
+
 struct ConversationTranscriptViewModel {
     let history: [CodexConversationTurn]
     let pendingQuestion: String?
     let status: String?
 
-    var text: String {
-        var lines: [String] = []
+    var items: [ConversationTranscriptItem] {
+        var items: [ConversationTranscriptItem] = []
         for turn in history {
-            lines.append("You: \(turn.question)")
-            lines.append("Codex: \(turn.answer)")
+            items.append(.user(turn.question))
+            items.append(.assistant(turn.answer))
         }
 
         if let pendingQuestion {
-            lines.append("You: \(pendingQuestion)")
+            items.append(.user(pendingQuestion))
         }
 
         if let status {
-            lines.append(status)
+            items.append(.status(status))
         }
 
-        return lines.isEmpty ? "Ask me anything." : lines.joined(separator: "\n\n")
+        return items.isEmpty ? [.emptyPrompt("Ask me anything.")] : items
     }
 }

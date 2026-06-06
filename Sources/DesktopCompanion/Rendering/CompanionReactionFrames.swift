@@ -7,11 +7,19 @@ struct CompanionReactionFrames {
     let strike: NSImage
     let flare: NSImage
 
-    init(markup: String, renderer: (String) -> NSImage) {
-        resting = renderer(Self.frameMarkup(from: markup, armRotation: -145, impactOpacity: 0))
-        windUp = renderer(Self.frameMarkup(from: markup, armRotation: -160, impactOpacity: 0))
-        strike = renderer(Self.frameMarkup(from: markup, armRotation: 15, impactOpacity: 1))
-        flare = renderer(Self.frameMarkup(from: markup, armRotation: -22, impactOpacity: 1))
+    init(markup: String, animationPreset: CompanionAnimationPreset, renderer: (String) -> NSImage) {
+        switch animationPreset {
+        case .idleOnly, .wholeObjectReaction:
+            resting = renderer(markup)
+            windUp = renderer(markup)
+            strike = renderer(markup)
+            flare = renderer(markup)
+        case .legoSmash:
+            resting = renderer(Self.frameMarkup(from: markup, armRotation: -145, impactOpacity: 0))
+            windUp = renderer(Self.frameMarkup(from: markup, armRotation: -160, impactOpacity: 0))
+            strike = renderer(Self.frameMarkup(from: markup, armRotation: 15, impactOpacity: 1))
+            flare = renderer(Self.frameMarkup(from: markup, armRotation: -22, impactOpacity: 1))
+        }
     }
 
     private static func frameMarkup(from markup: String, armRotation: Int, impactOpacity: Int) -> String {

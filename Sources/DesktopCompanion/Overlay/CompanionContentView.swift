@@ -1,7 +1,7 @@
 import AppKit
 
 final class CompanionContentView: NSView {
-    private let svgView = SVGCompanionView()
+    private let svgView: SVGCompanionView
     private let closeButton = NSButton()
     private let keyboardAccessButton = NSButton()
     private var trackingAreaRef: NSTrackingArea?
@@ -20,7 +20,12 @@ final class CompanionContentView: NSView {
     var conversationThemes: [ConversationThemeSummary] = []
     var selectedConversationThemeID: String?
 
-    override init(frame frameRect: NSRect) {
+    init(
+        frame frameRect: NSRect,
+        package: CompanionPackage? = CompanionPackageLoader.selectedPackage(),
+        animationPreset: CompanionAnimationPreset? = nil
+    ) {
+        self.svgView = SVGCompanionView(package: package, animationPreset: animationPreset)
         super.init(frame: frameRect)
         setupViews()
     }
@@ -105,7 +110,7 @@ final class CompanionContentView: NSView {
 
     override func menu(for event: NSEvent) -> NSMenu? {
         let menu = NSMenu()
-        let testItem = NSMenuItem(title: "Test Bash", action: #selector(testBashRequested), keyEquivalent: "b")
+        let testItem = NSMenuItem(title: "Preview Animation", action: #selector(previewAnimationRequested), keyEquivalent: "b")
         testItem.target = self
         menu.addItem(testItem)
 
@@ -147,7 +152,7 @@ final class CompanionContentView: NSView {
 
         menu.addItem(.separator())
 
-        let quitItem = NSMenuItem(title: "Quit", action: #selector(closeRequested), keyEquivalent: "q")
+        let quitItem = NSMenuItem(title: "Remove Companion", action: #selector(closeRequested), keyEquivalent: "w")
         quitItem.target = self
         menu.addItem(quitItem)
         return menu
@@ -159,6 +164,10 @@ final class CompanionContentView: NSView {
 
     func reloadSVG() {
         svgView.reloadSVG()
+    }
+
+    func reloadSVG(package: CompanionPackage?, animationPreset: CompanionAnimationPreset? = nil) {
+        svgView.reloadSVG(package: package, animationPreset: animationPreset)
     }
 
     var mouthAnchor: NSPoint {
@@ -195,7 +204,7 @@ final class CompanionContentView: NSView {
         )
         closeButton.imageScaling = .scaleProportionallyUpOrDown
         closeButton.contentTintColor = NSColor.white.withAlphaComponent(0.95)
-        closeButton.toolTip = "Quit Desktop Companion"
+        closeButton.toolTip = "Remove Companion"
         closeButton.target = self
         closeButton.action = #selector(closeRequested)
         closeButton.alphaValue = 0
@@ -258,7 +267,7 @@ final class CompanionContentView: NSView {
         onConversationThemeSelected?(themeID)
     }
 
-    @objc private func testBashRequested() {
+    @objc private func previewAnimationRequested() {
         playTypingReaction()
     }
 
