@@ -1,4 +1,4 @@
-<svg id="companion-art" viewBox="0 0 220 220" role="img" aria-label="16-bit smiling LEGO Vader bashing the floor" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges">
+<svg id="companion-art" viewBox="0 0 220 220" data-mouth-anchor="121 94" role="img" aria-label="16-bit smiling LEGO Vader bashing the floor" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges">
   <ellipse class="impact-shadow" cx="112" cy="198" rx="70" ry="9" fill="#050607" opacity=".34"/>
 
   <g class="floor-board">

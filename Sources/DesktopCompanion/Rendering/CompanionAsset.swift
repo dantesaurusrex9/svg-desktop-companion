@@ -1,11 +1,14 @@
+import AppKit
 import Foundation
 
 struct LoadedCompanionAsset {
     let markup: String
+    let mouthAnchor: NSPoint
 }
 
 enum CompanionAsset {
     static let canvasSize = 220
+    static let defaultMouthAnchor = NSPoint(x: 121, y: 94)
 
     static var userSVGURL: URL? {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
@@ -19,15 +22,33 @@ enum CompanionAsset {
            FileManager.default.fileExists(atPath: url.path),
            let markup = try? String(contentsOf: url, encoding: .utf8),
            isUsableCompanionSVG(markup) {
-            return LoadedCompanionAsset(markup: markup)
+            return LoadedCompanionAsset(markup: markup, mouthAnchor: mouthAnchor(from: markup))
         }
 
         if let url = Bundle.module.url(forResource: "companion", withExtension: "svg"),
            let markup = try? String(contentsOf: url, encoding: .utf8) {
-            return LoadedCompanionAsset(markup: markup)
+            return LoadedCompanionAsset(markup: markup, mouthAnchor: mouthAnchor(from: markup))
         }
 
-        return LoadedCompanionAsset(markup: fallbackSVG)
+        return LoadedCompanionAsset(markup: fallbackSVG, mouthAnchor: mouthAnchor(from: fallbackSVG))
+    }
+
+    static func mouthAnchor(from markup: String) -> NSPoint {
+        if let anchor = attributeValue(named: "data-mouth-anchor", in: markup)
+            .flatMap(pointValue),
+            isValid(anchor) {
+            return anchor
+        }
+
+        if let x = attributeValue(named: "data-mouth-x", in: markup).flatMap(numberValue),
+           let y = attributeValue(named: "data-mouth-y", in: markup).flatMap(numberValue) {
+            let anchor = NSPoint(x: x, y: y)
+            if isValid(anchor) {
+                return anchor
+            }
+        }
+
+        return defaultMouthAnchor
     }
 
     private static func isUsableCompanionSVG(_ markup: String) -> Bool {
@@ -38,8 +59,47 @@ enum CompanionAsset {
             ) != nil
     }
 
+    private static func attributeValue(named name: String, in markup: String) -> String? {
+        let pattern = #"\b\#(NSRegularExpression.escapedPattern(for: name))\s*=\s*["']([^"']+)["']"#
+        guard let expression = try? NSRegularExpression(pattern: pattern),
+              let match = expression.firstMatch(in: markup, range: NSRange(markup.startIndex..., in: markup)),
+              let range = Range(match.range(at: 1), in: markup) else {
+            return nil
+        }
+
+        return String(markup[range])
+    }
+
+    private static func pointValue(_ value: String) -> NSPoint? {
+        let parts = value.split { character in
+            character == "," || character == " " || character == "\t" || character == "\n"
+        }
+        guard parts.count == 2,
+              let x = numberValue(String(parts[0])),
+              let y = numberValue(String(parts[1])) else {
+            return nil
+        }
+
+        return NSPoint(x: x, y: y)
+    }
+
+    private static func numberValue(_ value: String) -> CGFloat? {
+        guard let number = Double(value) else {
+            return nil
+        }
+
+        return CGFloat(number)
+    }
+
+    private static func isValid(_ anchor: NSPoint) -> Bool {
+        anchor.x >= 0
+            && anchor.y >= 0
+            && anchor.x <= CGFloat(canvasSize)
+            && anchor.y <= CGFloat(canvasSize)
+    }
+
     private static let fallbackSVG = """
-    <svg viewBox="0 0 220 220" role="img" aria-label="Desktop companion">
+    <svg viewBox="0 0 220 220" data-mouth-anchor="110 118" role="img" aria-label="Desktop companion">
       <rect x="52" y="52" width="116" height="116" rx="18" fill="#F7D117"/>
       <text x="110" y="118" text-anchor="middle" font-family="-apple-system, sans-serif" font-size="18" fill="#111">SVG</text>
     </svg>

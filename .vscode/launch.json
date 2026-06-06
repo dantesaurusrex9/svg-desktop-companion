@@ -1,0 +1,24 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:svg-desktop-companion}",
+            "name": "Debug DesktopCompanion",
+            "target": "DesktopCompanion",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug DesktopCompanion"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:svg-desktop-companion}",
+            "name": "Release DesktopCompanion",
+            "target": "DesktopCompanion",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release DesktopCompanion"
+        }
+    ]
+}

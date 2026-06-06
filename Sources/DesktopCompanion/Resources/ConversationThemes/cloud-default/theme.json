@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "cloud-default",
+  "displayName": "Cloud Default",
+  "bubbleSVG": "bubble.svg",
+  "width": 360,
+  "minHeight": 190,
+  "maxVisibleHeightRatio": 0.5,
+  "contentInsets": {
+    "top": 34,
+    "left": 36,
+    "bottom": 26,
+    "right": 36
+  },
+  "inputHeight": 34,
+  "transcriptInputSpacing": 12,
+  "tailAnchor": {
+    "x": 72,
+    "y": 0
+  },
+  "tailFillColor": "#FFFFFFF5",
+  "tailStrokeColor": "#0000001F"
+}
