@@ -1,7 +1,7 @@
 import AppKit
 import CoreGraphics
 
-enum CompanionLayerMode: String, CaseIterable {
+enum CompanionLayerMode: String, CaseIterable, Codable {
     case desktop
     case floating
     case alwaysOnTop

@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "id": "lego-vader",
+  "displayName": "LEGO Vader",
+  "companionSVG": "companion.svg",
+  "speechAnchor": { "x": 121, "y": 94 },
+  "bubblePlacement": "automatic",
+  "animationPreset": "legoSmash"
+}

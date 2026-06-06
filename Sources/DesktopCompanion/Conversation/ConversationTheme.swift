@@ -102,15 +102,22 @@ enum ConversationThemeLoader {
     static let selectedThemeDefaultsKey = "desktopCompanion.conversationThemeID"
 
     static var userThemesDirectory: URL? {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
-            .first?
-            .appendingPathComponent("DesktopCompanion", isDirectory: true)
+        DesktopCompanionPaths.applicationSupportDirectoryURL?
             .appendingPathComponent("ConversationThemes", isDirectory: true)
     }
 
-    static func selectedTheme(userDefaults: UserDefaults = .standard) -> ConversationTheme {
-        let themes = availableThemes()
-        if let selectedID = userDefaults.string(forKey: selectedThemeDefaultsKey),
+    static func selectedTheme(
+        package: CompanionPackage? = CompanionPackageLoader.selectedPackage(),
+        userDefaults: UserDefaults = .standard
+    ) -> ConversationTheme {
+        let themes = availableThemes(package: package)
+        if let selectedID = userDefaults.string(forKey: selectedThemeDefaultsKey(package: package)),
+           let selectedTheme = themes.first(where: { $0.id == selectedID }) {
+            return selectedTheme
+        }
+
+        if package != nil,
+           let selectedID = userDefaults.string(forKey: selectedThemeDefaultsKey),
            let selectedTheme = themes.first(where: { $0.id == selectedID }) {
             return selectedTheme
         }
@@ -118,8 +125,12 @@ enum ConversationThemeLoader {
         return themes.first ?? fallbackTheme()
     }
 
-    static func saveSelectedThemeID(_ themeID: String, userDefaults: UserDefaults = .standard) {
-        userDefaults.set(themeID, forKey: selectedThemeDefaultsKey)
+    static func saveSelectedThemeID(
+        _ themeID: String,
+        package: CompanionPackage? = nil,
+        userDefaults: UserDefaults = .standard
+    ) {
+        userDefaults.set(themeID, forKey: selectedThemeDefaultsKey(package: package))
     }
 
     static func availableThemeSummaries() -> [ConversationThemeSummary] {
@@ -128,8 +139,15 @@ enum ConversationThemeLoader {
         }
     }
 
-    static func availableThemes() -> [ConversationTheme] {
-        var themes = [bundledTheme()]
+    static func availableThemeSummaries(package: CompanionPackage?) -> [ConversationThemeSummary] {
+        availableThemes(package: package).map {
+            ConversationThemeSummary(id: $0.id, displayName: $0.displayName)
+        }
+    }
+
+    static func availableThemes(package: CompanionPackage? = CompanionPackageLoader.selectedPackage()) -> [ConversationTheme] {
+        var themes = packageThemes(package: package)
+        themes.append(bundledTheme())
         themes.append(contentsOf: userThemes())
 
         return themes.reduce(into: []) { uniqueThemes, theme in
@@ -143,11 +161,12 @@ enum ConversationThemeLoader {
         let manifestURL = folderURL.appendingPathComponent("theme.json", isDirectory: false)
         let manifestData = try Data(contentsOf: manifestURL)
         let manifest = try JSONDecoder().decode(ConversationThemeManifest.self, from: manifestData)
-        let bubbleSVGURL = folderURL.appendingPathComponent(manifest.bubbleSVG, isDirectory: false)
 
         guard manifest.schemaVersion == 1,
               !manifest.id.isEmpty,
               !manifest.displayName.isEmpty,
+              let bubbleSVGURL = CompanionPackageLoader.childURL(named: manifest.bubbleSVG, in: folderURL, isDirectory: false),
+              (try? CompanionAsset.safeSVGMarkup(from: bubbleSVGURL, fileManager: fileManager)) != nil,
               manifest.width > 0,
               manifest.minHeight > 0,
               manifest.inputHeight > 0,
@@ -215,13 +234,28 @@ enum ConversationThemeLoader {
         return fallbackTheme()
     }
 
+    private static func packageThemes(package: CompanionPackage?, fileManager: FileManager = .default) -> [ConversationTheme] {
+        guard let packageThemesDirectory = package?.conversationThemesDirectoryURL else {
+            return []
+        }
+
+        return themes(in: packageThemesDirectory, fileManager: fileManager)
+    }
+
     private static func userThemes(fileManager: FileManager = .default) -> [ConversationTheme] {
-        guard let userThemesDirectory,
-              let folderURLs = try? fileManager.contentsOfDirectory(
-                at: userThemesDirectory,
-                includingPropertiesForKeys: [.isDirectoryKey],
-                options: [.skipsHiddenFiles]
-              ) else {
+        guard let userThemesDirectory else {
+            return []
+        }
+
+        return themes(in: userThemesDirectory, fileManager: fileManager)
+    }
+
+    static func themes(in directoryURL: URL, fileManager: FileManager = .default) -> [ConversationTheme] {
+        guard let folderURLs = try? fileManager.contentsOfDirectory(
+            at: directoryURL,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) else {
             return []
         }
 
@@ -236,6 +270,14 @@ enum ConversationThemeLoader {
                 }
             }
             .sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
+    }
+
+    private static func selectedThemeDefaultsKey(package: CompanionPackage?) -> String {
+        guard let packageID = package?.id else {
+            return selectedThemeDefaultsKey
+        }
+
+        return "\(selectedThemeDefaultsKey).\(packageID)"
     }
 
     private static func isDirectory(_ url: URL) -> Bool {

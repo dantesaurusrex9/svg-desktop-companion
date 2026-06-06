@@ -11,8 +11,16 @@ final class SVGCompanionView: NSView {
     private var isPlayingReaction = false
     private let maxQueuedHitCount = 1
     private(set) var mouthAnchor = CompanionAsset.defaultMouthAnchor
+    private var package: CompanionPackage?
+    private var animationPreset: CompanionAnimationPreset?
 
-    override init(frame frameRect: NSRect) {
+    init(
+        frame frameRect: NSRect = .zero,
+        package: CompanionPackage? = CompanionPackageLoader.selectedPackage(),
+        animationPreset: CompanionAnimationPreset? = nil
+    ) {
+        self.package = package
+        self.animationPreset = animationPreset
         super.init(frame: frameRect)
         setupImageView()
         reloadSVG()
@@ -38,14 +46,31 @@ final class SVGCompanionView: NSView {
     }
 
     func reloadSVG() {
-        let asset = CompanionAsset.load()
+        let asset = CompanionAsset.load(package: package)
         mouthAnchor = asset.mouthAnchor
         cancelPendingFrameChanges()
         queuedHitCount = 0
         isPlayingReaction = false
-        let frames = CompanionReactionFrames(markup: asset.markup, renderer: image(from:))
+        let preset = animationPreset ?? asset.animationPreset
+        guard preset != .idleOnly else {
+            reactionFrames = nil
+            imageView.image = image(from: asset.markup)
+            return
+        }
+
+        let frames = CompanionReactionFrames(
+            markup: asset.markup,
+            animationPreset: preset,
+            renderer: image(from:)
+        )
         reactionFrames = frames
         imageView.image = frames.resting
+    }
+
+    func reloadSVG(package: CompanionPackage?, animationPreset: CompanionAnimationPreset? = nil) {
+        self.package = package
+        self.animationPreset = animationPreset
+        reloadSVG()
     }
 
     private func playNextQueuedHit() {

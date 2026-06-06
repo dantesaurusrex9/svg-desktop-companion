@@ -1,23 +1,48 @@
 import AppKit
 
 final class CompanionWindowController: NSWindowController {
-    private let content = CompanionContentView(frame: NSRect(origin: .zero, size: CompanionWindowMetrics.size))
-    private let conversationController = ConversationBubbleWindowController()
+    private var content: CompanionContentView
+    private var package: CompanionPackage
+    private let conversationController: ConversationBubbleWindowController
+    private let onInstanceChanged: (CompanionInstance) -> Void
+    private let onInstanceClosed: (String) -> Void
+    private(set) var instance: CompanionInstance
 
-    init() {
-        let savedOrigin = PositionStore.load()
-        let savedLayerMode = CompanionLayerModeStore.load()
-        let initialFrame = NSRect(origin: savedOrigin ?? CompanionWindowMetrics.defaultOrigin, size: CompanionWindowMetrics.size)
-        let window = DesktopOverlayWindow(contentRect: initialFrame, layerMode: savedLayerMode)
+    init(
+        instance: CompanionInstance,
+        package: CompanionPackage,
+        onInstanceChanged: @escaping (CompanionInstance) -> Void,
+        onInstanceClosed: @escaping (String) -> Void
+    ) {
+        self.instance = instance
+        self.package = package
+        self.content = CompanionContentView(
+            frame: NSRect(origin: .zero, size: CompanionWindowMetrics.size),
+            package: package,
+            animationPreset: instance.animationPreset
+        )
+        self.conversationController = ConversationBubbleWindowController(
+            package: package,
+            bubblePlacement: instance.bubblePlacement
+        )
+        self.onInstanceChanged = onInstanceChanged
+        self.onInstanceClosed = onInstanceClosed
+
+        let initialFrame = NSRect(origin: instance.originPoint, size: CompanionWindowMetrics.size)
+        let window = DesktopOverlayWindow(contentRect: initialFrame, layerMode: instance.layerMode)
 
         super.init(window: window)
 
-        content.layerMode = savedLayerMode
-        content.onClose = {
-            NSApp.terminate(nil)
+        content.layerMode = instance.layerMode
+        content.onClose = { [weak self] in
+            guard let self else {
+                return
+            }
+
+            self.onInstanceClosed(self.instance.id)
         }
         content.onReloadSVG = { [weak self] in
-            self?.reloadSVG()
+            self?.reloadPackage()
         }
         content.onConversate = { [weak self] in
             self?.showConversation()
@@ -31,8 +56,8 @@ final class CompanionWindowController: NSWindowController {
         content.onPositionChanging = { [weak self] origin in
             self?.moveConversation(companionOrigin: origin)
         }
-        content.onPositionChanged = { origin in
-            PositionStore.save(origin)
+        content.onPositionChanged = { [weak self] origin in
+            self?.setOrigin(origin)
         }
         content.onLayerModeChanged = { [weak self] layerMode in
             self?.setLayerMode(layerMode)
@@ -58,6 +83,11 @@ final class CompanionWindowController: NSWindowController {
         content.setKeyboardAccessEnabled(isEnabled)
     }
 
+    func closeCompanionWindow() {
+        conversationController.closeBubble()
+        window?.orderOut(nil)
+    }
+
     private func showConversation() {
         guard let window,
               let screenPoint = conversationScreenPoint() else {
@@ -68,8 +98,14 @@ final class CompanionWindowController: NSWindowController {
         conversationController.show(anchoredAt: screenPoint, companionFrame: window.frame, level: level)
     }
 
-    private func reloadSVG() {
-        content.reloadSVG()
+    private func reloadPackage() {
+        if let package = CompanionPackageLoader.package(id: instance.packageID) {
+            self.package = package
+            content.reloadSVG(package: package, animationPreset: instance.animationPreset)
+        } else {
+            content.reloadSVG(package: package, animationPreset: instance.animationPreset)
+        }
+
         guard let origin = window?.frame.origin else {
             return
         }
@@ -102,7 +138,7 @@ final class CompanionWindowController: NSWindowController {
             return nil
         }
 
-        let windowPoint = content.convert(content.mouthAnchor, to: nil)
+        let windowPoint = content.convert(instance.speechAnchorPoint, to: nil)
         let origin = companionOrigin ?? window.frame.origin
         return NSPoint(x: origin.x + windowPoint.x, y: origin.y + windowPoint.y)
     }
@@ -112,9 +148,15 @@ final class CompanionWindowController: NSWindowController {
         content.selectedConversationThemeID = conversationController.selectedThemeID
     }
 
+    private func setOrigin(_ origin: NSPoint) {
+        instance.originPoint = origin
+        onInstanceChanged(instance)
+    }
+
     private func setLayerMode(_ layerMode: CompanionLayerMode) {
         content.layerMode = layerMode
-        CompanionLayerModeStore.save(layerMode)
+        instance.layerMode = layerMode
+        onInstanceChanged(instance)
 
         guard let window = window as? DesktopOverlayWindow else {
             return

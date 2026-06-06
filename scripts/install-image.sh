@@ -24,7 +24,8 @@ case "$source_image" in
 	;;
 esac
 
-target_dir="$HOME/Library/Application Support/DesktopCompanion"
+support_dir_name=${DESKTOP_COMPANION_SUPPORT_DIR_NAME:-DesktopCompanion}
+target_dir="$HOME/Library/Application Support/$support_dir_name"
 target_svg="$target_dir/companion.svg"
 script_dir=$(cd "$(dirname "$0")" && pwd)
 

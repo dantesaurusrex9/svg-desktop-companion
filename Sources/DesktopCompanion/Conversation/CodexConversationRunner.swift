@@ -188,14 +188,11 @@ final class CodexConversationRunner {
     }
 
     private func conversationWorkspaceURL() throws -> URL {
-        let appSupport = try fileManager.url(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask,
-            appropriateFor: nil,
+        let appSupport = try DesktopCompanionPaths.applicationSupportDirectory(
+            fileManager: fileManager,
             create: true
         )
         let workspaceURL = appSupport
-            .appendingPathComponent("DesktopCompanion", isDirectory: true)
             .appendingPathComponent("CodexConversation", isDirectory: true)
 
         try fileManager.createDirectory(at: workspaceURL, withIntermediateDirectories: true)

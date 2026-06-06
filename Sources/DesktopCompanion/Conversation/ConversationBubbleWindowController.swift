@@ -13,6 +13,8 @@ final class ConversationBubbleWindowController: NSWindowController, NSWindowDele
     private let inputContainerView = NSView()
     private let inputField = NSTextField()
     private let closeButton = NSButton()
+    private let package: CompanionPackage?
+    private let bubblePlacement: CompanionBubblePlacement
     private var theme: ConversationTheme
     private var themeConstraints: [NSLayoutConstraint] = []
     private var lastAnchor: NSPoint?
@@ -22,9 +24,15 @@ final class ConversationBubbleWindowController: NSWindowController, NSWindowDele
     private var isRunning = false
     private let hoverAnimationKey = "desktopCompanionConversationHover"
 
-    init(runner: CodexConversationRunner = CodexConversationRunner()) {
+    init(
+        package: CompanionPackage? = CompanionPackageLoader.selectedPackage(),
+        bubblePlacement: CompanionBubblePlacement = .automatic,
+        runner: CodexConversationRunner = CodexConversationRunner()
+    ) {
+        self.package = package
+        self.bubblePlacement = bubblePlacement
         self.runner = runner
-        self.theme = ConversationThemeLoader.selectedTheme()
+        self.theme = ConversationThemeLoader.selectedTheme(package: package)
 
         let panel = ConversationBubblePanel(
             contentRect: NSRect(
@@ -80,13 +88,19 @@ final class ConversationBubbleWindowController: NSWindowController, NSWindowDele
         window.orderFrontRegardless()
     }
 
+    func closeBubble() {
+        runner.cancel()
+        stopHoverAnimation()
+        window?.orderOut(nil)
+    }
+
     func reloadTheme() {
-        theme = ConversationThemeLoader.selectedTheme()
+        theme = ConversationThemeLoader.selectedTheme(package: package)
         applyTheme()
     }
 
     func selectTheme(id themeID: String) {
-        ConversationThemeLoader.saveSelectedThemeID(themeID)
+        ConversationThemeLoader.saveSelectedThemeID(themeID, package: package)
         reloadTheme()
     }
 
@@ -95,7 +109,7 @@ final class ConversationBubbleWindowController: NSWindowController, NSWindowDele
     }
 
     var availableThemes: [ConversationThemeSummary] {
-        ConversationThemeLoader.availableThemeSummaries()
+        ConversationThemeLoader.availableThemeSummaries(package: package)
     }
 
     func windowWillClose(_ notification: Notification) {
@@ -270,9 +284,7 @@ final class ConversationBubbleWindowController: NSWindowController, NSWindowDele
     }
 
     @objc private func closeRequested() {
-        runner.cancel()
-        stopHoverAnimation()
-        window?.orderOut(nil)
+        closeBubble()
     }
 
     private func renderTranscript(status: String? = nil) {
@@ -314,7 +326,8 @@ final class ConversationBubbleWindowController: NSWindowController, NSWindowDele
             transcriptHeight: transcriptHeight,
             anchoredAt: anchor,
             companionFrame: companionFrame,
-            visibleFrame: visibleFrame
+            visibleFrame: visibleFrame,
+            placement: bubblePlacement
         )
 
         connectorView.connectorStart = layout.connectorStart

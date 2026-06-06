@@ -45,7 +45,8 @@ enum ConversationBubbleLayout {
         transcriptHeight: CGFloat,
         anchoredAt mouthScreenPoint: NSPoint,
         companionFrame: NSRect,
-        visibleFrame: NSRect
+        visibleFrame: NSRect,
+        placement: CompanionBubblePlacement = .automatic
     ) -> ConversationBubbleLayoutResult {
         let width = bubbleWidth(metrics: metrics, visibleFrame: visibleFrame)
         let availableHeight = max(visibleFrame.height - (screenMargin * 2), 1)
@@ -59,8 +60,9 @@ enum ConversationBubbleLayout {
             max(visibleFrame.height * metrics.maxVisibleHeightRatio, minimumUsableHeight)
         )
         let aboveSpace = max(visibleFrame.maxY - screenMargin - companionFrame.maxY - bodyCompanionGap, 0)
-        let shouldPlaceAbove = aboveSpace >= min(metrics.minHeight, minimumUsableHeight)
-        let maxHeight = shouldPlaceAbove ? min(maxPreferredHeight, aboveSpace) : maxPreferredHeight
+        let shouldPlaceAbove = placement == .above
+            || (placement == .automatic && aboveSpace >= min(metrics.minHeight, minimumUsableHeight))
+        let maxHeight = shouldPlaceAbove ? min(maxPreferredHeight, max(aboveSpace, minimumUsableHeight)) : maxPreferredHeight
         let desiredHeight = metrics.contentInsets.top
             + max(transcriptHeight, 1)
             + metrics.transcriptInputSpacing
@@ -82,6 +84,7 @@ enum ConversationBubbleLayout {
             mouthScreenPoint: mouthScreenPoint,
             companionFrame: companionFrame,
             visibleFrame: visibleFrame,
+            placement: placement,
             placeAbove: shouldPlaceAbove
         )
         let connectorStartScreenPoint = connectorStart(
@@ -142,6 +145,7 @@ enum ConversationBubbleLayout {
         mouthScreenPoint: NSPoint,
         companionFrame: NSRect,
         visibleFrame: NSRect,
+        placement: CompanionBubblePlacement,
         placeAbove: Bool
     ) -> NSRect {
         if placeAbove {
@@ -151,7 +155,11 @@ enum ConversationBubbleLayout {
                     min: visibleFrame.minX + screenMargin,
                     max: visibleFrame.maxX - size.width - screenMargin
                 ),
-                y: companionFrame.maxY + bodyCompanionGap,
+                y: clamped(
+                    companionFrame.maxY + bodyCompanionGap,
+                    min: visibleFrame.minY + screenMargin,
+                    max: visibleFrame.maxY - size.height - screenMargin
+                ),
                 width: size.width,
                 height: size.height
             )
@@ -161,7 +169,15 @@ enum ConversationBubbleLayout {
         let leftX = companionFrame.minX - bodyCompanionGap - size.width
         let rightSpace = visibleFrame.maxX - screenMargin - rightX
         let leftSpace = leftX - visibleFrame.minX - screenMargin
-        let preferredX = rightSpace >= leftSpace ? rightX : leftX
+        let preferredX: CGFloat
+        switch placement {
+        case .left:
+            preferredX = leftX
+        case .right:
+            preferredX = rightX
+        case .automatic, .above:
+            preferredX = rightSpace >= leftSpace ? rightX : leftX
+        }
 
         return NSRect(
             x: clamped(
