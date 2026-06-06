@@ -1,0 +1,24 @@
+<svg viewBox="0 0 360 190" role="img" aria-label="Cloud conversation bubble" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="4" stdDeviation="5" flood-color="#000000" flood-opacity=".18"/>
+    </filter>
+    <linearGradient id="cloud-fill" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#F7F8FA"/>
+    </linearGradient>
+  </defs>
+
+  <g filter="url(#shadow)">
+    <path d="M52 8
+             H303
+             C329 8 348 27 348 53
+             V138
+             C348 164 328 182 302 182
+             H56
+             C30 182 14 164 14 138
+             V53
+             C14 27 30 8 52 8Z"
+          fill="url(#cloud-fill)" stroke="#D9DCE1" stroke-width="1.5"/>
+  </g>
+</svg>

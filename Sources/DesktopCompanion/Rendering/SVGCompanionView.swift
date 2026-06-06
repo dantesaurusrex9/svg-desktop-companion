@@ -10,6 +10,7 @@ final class SVGCompanionView: NSView {
     private var queuedHitCount = 0
     private var isPlayingReaction = false
     private let maxQueuedHitCount = 1
+    private(set) var mouthAnchor = CompanionAsset.defaultMouthAnchor
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -38,6 +39,7 @@ final class SVGCompanionView: NSView {
 
     func reloadSVG() {
         let asset = CompanionAsset.load()
+        mouthAnchor = asset.mouthAnchor
         cancelPendingFrameChanges()
         queuedHitCount = 0
         isPlayingReaction = false

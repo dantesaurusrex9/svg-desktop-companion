@@ -9,10 +9,16 @@ final class CompanionContentView: NSView {
     private var dragStartWindowOrigin: NSPoint?
 
     var onClose: (() -> Void)?
+    var onPositionChanging: ((NSPoint) -> Void)?
     var onPositionChanged: ((NSPoint) -> Void)?
     var onReloadSVG: (() -> Void)?
+    var onConversate: (() -> Void)?
+    var onReloadConversationTheme: (() -> Void)?
+    var onConversationThemeSelected: ((String) -> Void)?
     var onLayerModeChanged: ((CompanionLayerMode) -> Void)?
     var layerMode: CompanionLayerMode = .desktop
+    var conversationThemes: [ConversationThemeSummary] = []
+    var selectedConversationThemeID: String?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -76,15 +82,14 @@ final class CompanionContentView: NSView {
         }
 
         let currentScreenPoint = window.convertPoint(toScreen: event.locationInWindow)
-        let delta = NSPoint(
-            x: currentScreenPoint.x - dragStartScreenPoint.x,
-            y: currentScreenPoint.y - dragStartScreenPoint.y
+        let nextOrigin = Self.draggedWindowOrigin(
+            dragStartScreenPoint: dragStartScreenPoint,
+            currentScreenPoint: currentScreenPoint,
+            dragStartWindowOrigin: dragStartWindowOrigin
         )
 
-        window.setFrameOrigin(NSPoint(
-            x: dragStartWindowOrigin.x + delta.x,
-            y: dragStartWindowOrigin.y + delta.y
-        ))
+        window.setFrameOrigin(nextOrigin)
+        onPositionChanging?(nextOrigin)
     }
 
     override func mouseUp(with event: NSEvent) {
@@ -107,6 +112,26 @@ final class CompanionContentView: NSView {
         let reloadItem = NSMenuItem(title: "Reload SVG", action: #selector(reloadRequested), keyEquivalent: "r")
         reloadItem.target = self
         menu.addItem(reloadItem)
+
+        let conversateItem = NSMenuItem(title: "Conversate", action: #selector(conversateRequested), keyEquivalent: "")
+        conversateItem.target = self
+        menu.addItem(conversateItem)
+
+        let reloadBubbleThemeItem = NSMenuItem(title: "Reload Bubble Theme", action: #selector(reloadConversationThemeRequested), keyEquivalent: "")
+        reloadBubbleThemeItem.target = self
+        menu.addItem(reloadBubbleThemeItem)
+
+        let bubbleThemeItem = NSMenuItem(title: "Bubble Theme", action: nil, keyEquivalent: "")
+        let bubbleThemeMenu = NSMenu()
+        for theme in conversationThemes {
+            let themeItem = NSMenuItem(title: theme.displayName, action: #selector(conversationThemeRequested(_:)), keyEquivalent: "")
+            themeItem.target = self
+            themeItem.representedObject = theme.id
+            themeItem.state = theme.id == selectedConversationThemeID ? .on : .off
+            bubbleThemeMenu.addItem(themeItem)
+        }
+        bubbleThemeItem.submenu = bubbleThemeMenu
+        menu.addItem(bubbleThemeItem)
 
         let layerItem = NSMenuItem(title: "Layer", action: nil, keyEquivalent: "")
         let layerMenu = NSMenu()
@@ -136,8 +161,23 @@ final class CompanionContentView: NSView {
         svgView.reloadSVG()
     }
 
+    var mouthAnchor: NSPoint {
+        svgView.mouthAnchor
+    }
+
     func setKeyboardAccessEnabled(_ isEnabled: Bool) {
         keyboardAccessButton.isHidden = isEnabled
+    }
+
+    static func draggedWindowOrigin(
+        dragStartScreenPoint: NSPoint,
+        currentScreenPoint: NSPoint,
+        dragStartWindowOrigin: NSPoint
+    ) -> NSPoint {
+        NSPoint(
+            x: dragStartWindowOrigin.x + currentScreenPoint.x - dragStartScreenPoint.x,
+            y: dragStartWindowOrigin.y + currentScreenPoint.y - dragStartScreenPoint.y
+        )
     }
 
     private func setupViews() {
@@ -200,6 +240,22 @@ final class CompanionContentView: NSView {
 
     @objc private func reloadRequested() {
         onReloadSVG?()
+    }
+
+    @objc private func conversateRequested() {
+        onConversate?()
+    }
+
+    @objc private func reloadConversationThemeRequested() {
+        onReloadConversationTheme?()
+    }
+
+    @objc private func conversationThemeRequested(_ sender: NSMenuItem) {
+        guard let themeID = sender.representedObject as? String else {
+            return
+        }
+
+        onConversationThemeSelected?(themeID)
     }
 
     @objc private func testBashRequested() {

@@ -15,13 +15,18 @@ let package = Package(
             name: "DesktopCompanion",
             path: "Sources/DesktopCompanion",
             resources: [
-                .process("Resources")
+                .process("Resources/companion.svg"),
+                .copy("Resources/ConversationThemes")
             ],
             linkerSettings: [
                 .linkedFramework("AppKit"),
                 .linkedFramework("ApplicationServices"),
                 .linkedFramework("Carbon")
             ]
+        ),
+        .testTarget(
+            name: "DesktopCompanionTests",
+            dependencies: ["DesktopCompanion"]
         )
     ]
 )
