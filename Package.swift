@@ -16,6 +16,7 @@ let package = Package(
             path: "Sources/DesktopCompanion",
             resources: [
                 .process("Resources/companion.svg"),
+                .copy("Resources/Companions"),
                 .copy("Resources/ConversationThemes")
             ],
             linkerSettings: [

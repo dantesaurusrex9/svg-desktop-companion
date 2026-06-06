@@ -4,33 +4,44 @@ import Foundation
 struct LoadedCompanionAsset {
     let markup: String
     let mouthAnchor: NSPoint
+    let animationPreset: CompanionAnimationPreset
 }
 
 enum CompanionAsset {
     static let canvasSize = 220
     static let defaultMouthAnchor = NSPoint(x: 121, y: 94)
+    static let maxSVGByteCount = 1_000_000
 
     static var userSVGURL: URL? {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
-            .first?
-            .appendingPathComponent("DesktopCompanion", isDirectory: true)
-            .appendingPathComponent("companion.svg", isDirectory: false)
+        CompanionPackageLoader.legacyUserSVGURL
     }
 
-    static func load() -> LoadedCompanionAsset {
-        if let url = userSVGURL,
-           FileManager.default.fileExists(atPath: url.path),
-           let markup = try? String(contentsOf: url, encoding: .utf8),
-           isUsableCompanionSVG(markup) {
-            return LoadedCompanionAsset(markup: markup, mouthAnchor: mouthAnchor(from: markup))
+    static func load(package: CompanionPackage? = CompanionPackageLoader.selectedPackage()) -> LoadedCompanionAsset {
+        if let package,
+           let asset = loadAsset(from: package.svgURL) {
+            return LoadedCompanionAsset(
+                markup: asset.markup,
+                mouthAnchor: package.speechAnchor,
+                animationPreset: package.animationPreset
+            )
+        }
+
+        if package == nil,
+           let url = userSVGURL,
+           let asset = loadAsset(from: url) {
+            return asset
         }
 
         if let url = Bundle.module.url(forResource: "companion", withExtension: "svg"),
-           let markup = try? String(contentsOf: url, encoding: .utf8) {
-            return LoadedCompanionAsset(markup: markup, mouthAnchor: mouthAnchor(from: markup))
+           let asset = loadAsset(from: url) {
+            return asset
         }
 
-        return LoadedCompanionAsset(markup: fallbackSVG, mouthAnchor: mouthAnchor(from: fallbackSVG))
+        return LoadedCompanionAsset(
+            markup: fallbackSVG,
+            mouthAnchor: mouthAnchor(from: fallbackSVG),
+            animationPreset: .wholeObjectReaction
+        )
     }
 
     static func mouthAnchor(from markup: String) -> NSPoint {
@@ -51,12 +62,58 @@ enum CompanionAsset {
         return defaultMouthAnchor
     }
 
-    private static func isUsableCompanionSVG(_ markup: String) -> Bool {
-        markup.contains("<svg")
+    static func isUsableCompanionSVG(_ markup: String) -> Bool {
+        isSafeSVGMarkup(markup)
             && markup.range(
                 of: #"viewBox\s*=\s*["']\s*0\s+0\s+220\s+220\s*["']"#,
                 options: .regularExpression
             ) != nil
+    }
+
+    static func isSafeSVGMarkup(_ markup: String) -> Bool {
+        guard markup.utf8.count <= maxSVGByteCount,
+              markup.range(of: #"<svg\b"#, options: [.regularExpression, .caseInsensitive]) != nil,
+              !matchesAnyUnsafePattern(in: markup),
+              !hasUnsafeReference(in: markup, attributeName: "href"),
+              !hasUnsafeReference(in: markup, attributeName: "xlink:href"),
+              !hasUnsafeCSSURL(in: markup) else {
+            return false
+        }
+
+        return true
+    }
+
+    static func safeSVGMarkup(from url: URL, fileManager: FileManager = .default) throws -> String {
+        if let fileSize = try? fileManager.attributesOfItem(atPath: url.path)[.size] as? NSNumber,
+           fileSize.uint64Value > UInt64(maxSVGByteCount) {
+            throw CompanionPackageError.invalidManifest
+        }
+
+        let data = try Data(contentsOf: url)
+        guard data.count <= maxSVGByteCount,
+              let markup = String(data: data, encoding: .utf8),
+              isSafeSVGMarkup(markup) else {
+            throw CompanionPackageError.invalidManifest
+        }
+
+        return markup
+    }
+
+    static func isValidAnchor(_ anchor: NSPoint) -> Bool {
+        isValid(anchor)
+    }
+
+    private static func loadAsset(from url: URL) -> LoadedCompanionAsset? {
+        guard let markup = try? safeSVGMarkup(from: url),
+              isUsableCompanionSVG(markup) else {
+            return nil
+        }
+
+        return LoadedCompanionAsset(
+            markup: markup,
+            mouthAnchor: mouthAnchor(from: markup),
+            animationPreset: .wholeObjectReaction
+        )
     }
 
     private static func attributeValue(named name: String, in markup: String) -> String? {
@@ -89,6 +146,62 @@ enum CompanionAsset {
         }
 
         return CGFloat(number)
+    }
+
+    private static func matchesAnyUnsafePattern(in markup: String) -> Bool {
+        let patterns = [
+            #"<!DOCTYPE\b"#,
+            #"<!ENTITY\b"#,
+            #"<script\b"#,
+            #"<foreignObject\b"#,
+            #"\son[a-zA-Z]+\s*="#
+        ]
+
+        return patterns.contains { pattern in
+            markup.range(of: pattern, options: [.regularExpression, .caseInsensitive]) != nil
+        }
+    }
+
+    private static func hasUnsafeReference(in markup: String, attributeName: String) -> Bool {
+        let pattern = #"\b"# + NSRegularExpression.escapedPattern(for: attributeName) + #"\s*=\s*["']([^"']*)["']"#
+        guard let expression = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
+            return true
+        }
+
+        let matches = expression.matches(in: markup, range: NSRange(markup.startIndex..., in: markup))
+        for match in matches {
+            guard let range = Range(match.range(at: 1), in: markup) else {
+                return true
+            }
+
+            let value = markup[range].trimmingCharacters(in: .whitespacesAndNewlines)
+            if !value.hasPrefix("#") {
+                return true
+            }
+        }
+
+        return false
+    }
+
+    private static func hasUnsafeCSSURL(in markup: String) -> Bool {
+        let pattern = #"url\(\s*['"]?([^'")\s]+)"#
+        guard let expression = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
+            return true
+        }
+
+        let matches = expression.matches(in: markup, range: NSRange(markup.startIndex..., in: markup))
+        for match in matches {
+            guard let range = Range(match.range(at: 1), in: markup) else {
+                return true
+            }
+
+            let value = markup[range].trimmingCharacters(in: .whitespacesAndNewlines)
+            if !value.hasPrefix("#") {
+                return true
+            }
+        }
+
+        return false
     }
 
     private static func isValid(_ anchor: NSPoint) -> Bool {
