@@ -9,7 +9,7 @@ final class ConversationBubbleWindowController: NSWindowController, NSWindowDele
     private let bubbleView = NSView()
     private let backgroundImageView = NSImageView()
     private let scrollView = NSScrollView()
-    private let transcriptView = NSTextView()
+    private let transcriptView = ConversationTranscriptView()
     private let inputContainerView = NSView()
     private let inputField = NSTextField()
     private let closeButton = NSButton()
@@ -64,6 +64,7 @@ final class ConversationBubbleWindowController: NSWindowController, NSWindowDele
         applyLayout(companionFrame: companionFrame)
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
+        window.orderFrontRegardless()
         startHoverAnimation()
         inputField.becomeFirstResponder()
     }
@@ -76,6 +77,7 @@ final class ConversationBubbleWindowController: NSWindowController, NSWindowDele
         }
 
         applyLayout(companionFrame: companionFrame)
+        window.orderFrontRegardless()
     }
 
     func reloadTheme() {
@@ -156,32 +158,27 @@ final class ConversationBubbleWindowController: NSWindowController, NSWindowDele
         backgroundImageView.imageScaling = .scaleAxesIndependently
         backgroundImageView.imageAlignment = .alignCenter
 
-        transcriptView.isEditable = false
-        transcriptView.isSelectable = true
-        transcriptView.drawsBackground = false
-        transcriptView.isHorizontallyResizable = false
-        transcriptView.isVerticallyResizable = true
-        transcriptView.autoresizingMask = [.width]
-        transcriptView.font = NSFont.systemFont(ofSize: 13)
-        transcriptView.textColor = .labelColor
-        transcriptView.textContainerInset = NSSize(width: 0, height: 0)
-        transcriptView.textContainer?.widthTracksTextView = true
-        transcriptView.string = "Ask me anything."
+        transcriptView.items = ConversationTranscriptViewModel(
+            history: [],
+            pendingQuestion: nil,
+            status: nil
+        ).items
 
         scrollView.drawsBackground = false
         scrollView.borderType = .noBorder
         scrollView.hasVerticalScroller = false
+        scrollView.hasHorizontalScroller = false
         scrollView.autohidesScrollers = true
         scrollView.documentView = transcriptView
 
         inputContainerView.wantsLayer = true
-        inputContainerView.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.94).cgColor
-        inputContainerView.layer?.borderColor = NSColor.black.withAlphaComponent(0.12).cgColor
+        inputContainerView.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.86).cgColor
+        inputContainerView.layer?.borderColor = NSColor.black.withAlphaComponent(0.10).cgColor
         inputContainerView.layer?.borderWidth = 1
-        inputContainerView.layer?.cornerRadius = 17
+        inputContainerView.layer?.cornerRadius = 21
 
-        inputField.font = NSFont.systemFont(ofSize: 14)
-        inputField.placeholderString = "Ask Codex"
+        inputField.font = NSFont.systemFont(ofSize: 15)
+        inputField.placeholderString = "Ask anything"
         inputField.isBezeled = false
         inputField.isBordered = false
         inputField.drawsBackground = false
@@ -224,8 +221,8 @@ final class ConversationBubbleWindowController: NSWindowController, NSWindowDele
             backgroundImageView.topAnchor.constraint(equalTo: bubbleView.topAnchor),
             backgroundImageView.bottomAnchor.constraint(equalTo: bubbleView.bottomAnchor),
 
-            closeButton.topAnchor.constraint(equalTo: bubbleView.topAnchor, constant: 14),
-            closeButton.trailingAnchor.constraint(equalTo: bubbleView.trailingAnchor, constant: -18),
+            closeButton.topAnchor.constraint(equalTo: bubbleView.topAnchor, constant: 20),
+            closeButton.trailingAnchor.constraint(equalTo: bubbleView.trailingAnchor, constant: -28),
             closeButton.widthAnchor.constraint(equalToConstant: 22),
             closeButton.heightAnchor.constraint(equalToConstant: 22),
 
@@ -284,17 +281,13 @@ final class ConversationBubbleWindowController: NSWindowController, NSWindowDele
             pendingQuestion: pendingQuestion,
             status: status
         )
-        transcriptView.string = model.text
+        transcriptView.items = model.items
         applyLayout()
-        transcriptView.scrollToEndOfDocument(nil)
+        scrollTranscriptToBottom()
     }
 
     private func bubbleLevel(for companionLevel: NSWindow.Level) -> NSWindow.Level {
-        if companionLevel.rawValue > NSWindow.Level.floating.rawValue {
-            return companionLevel
-        }
-
-        return .floating
+        NSWindow.Level(rawValue: max(companionLevel.rawValue, NSWindow.Level.floating.rawValue) + 1)
     }
 
     private func applyTheme() {
@@ -328,11 +321,15 @@ final class ConversationBubbleWindowController: NSWindowController, NSWindowDele
         connectorView.connectorEnd = layout.connectorEnd
         connectorView.needsDisplay = true
         scrollView.hasVerticalScroller = layout.isTranscriptScrollable
-        transcriptView.textContainer?.containerSize = NSSize(
-            width: layout.transcriptRect.width,
-            height: CGFloat.greatestFiniteMagnitude
+        inputContainerView.layer?.cornerRadius = layout.inputRect.height / 2
+        transcriptView.frame = NSRect(
+            origin: .zero,
+            size: NSSize(
+                width: layout.transcriptRect.width,
+                height: max(layout.transcriptRect.height, transcriptHeight)
+            )
         )
-        transcriptView.frame = NSRect(origin: .zero, size: layout.transcriptRect.size)
+        transcriptView.needsLayout = true
 
         NSLayoutConstraint.deactivate(themeConstraints)
         themeConstraints = [
@@ -375,18 +372,14 @@ final class ConversationBubbleWindowController: NSWindowController, NSWindowDele
     }
 
     private func measuredTranscriptHeight(width: CGFloat) -> CGFloat {
-        let font = transcriptView.font ?? NSFont.systemFont(ofSize: 13)
-        let text = transcriptView.string.isEmpty ? "Ask me anything." : transcriptView.string
-        let attributed = NSAttributedString(
-            string: text,
-            attributes: [.font: font]
-        )
-        let bounds = attributed.boundingRect(
-            with: NSSize(width: max(width, 1), height: CGFloat.greatestFiniteMagnitude),
-            options: [.usesLineFragmentOrigin, .usesFontLeading]
-        )
+        transcriptView.measuredHeight(width: width)
+    }
 
-        return ceil(bounds.height) + 12
+    private func scrollTranscriptToBottom() {
+        let visibleHeight = scrollView.contentView.bounds.height
+        let nextY = max(transcriptView.frame.height - visibleHeight, 0)
+        scrollView.contentView.scroll(to: NSPoint(x: 0, y: nextY))
+        scrollView.reflectScrolledClipView(scrollView.contentView)
     }
 
     private func visibleFrame(containing point: NSPoint) -> NSRect {
@@ -427,6 +420,277 @@ private final class ConversationBubblePanel: NSPanel {
 
     override var canBecomeMain: Bool {
         true
+    }
+}
+
+private final class ConversationTranscriptView: NSView {
+    var items: [ConversationTranscriptItem] = [.emptyPrompt("Ask me anything.")] {
+        didSet {
+            rebuildRows()
+        }
+    }
+    private var rowViews: [TranscriptRowView] = []
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        setupView()
+        rebuildRows()
+    }
+
+    required init?(coder: NSCoder) {
+        nil
+    }
+
+    override var isFlipped: Bool {
+        true
+    }
+
+    func measuredHeight(width: CGFloat) -> CGFloat {
+        let rows = rowLayouts(width: width)
+        guard let lastRow = rows.last else {
+            return 1
+        }
+
+        return ceil(lastRow.frame.maxY)
+    }
+
+    override func layout() {
+        super.layout()
+        layoutRows(width: bounds.width)
+    }
+
+    private func setupView() {
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.clear.cgColor
+    }
+
+    private func rebuildRows() {
+        for rowView in rowViews {
+            rowView.removeFromSuperview()
+        }
+
+        rowViews = items.map { TranscriptRowView(item: $0) }
+        for rowView in rowViews {
+            addSubview(rowView)
+        }
+        needsLayout = true
+    }
+
+    private func layoutRows(width: CGFloat) {
+        let rows = rowLayouts(width: width)
+        for (rowView, row) in zip(rowViews, rows) {
+            rowView.apply(row: row)
+        }
+    }
+
+    private func rowLayouts(width: CGFloat) -> [RowLayout] {
+        let width = max(width, 1)
+        var rows: [RowLayout] = []
+        var y: CGFloat = 0
+
+        for item in items {
+            let attributedText = attributedString(for: item)
+            let isBubble = item.isMessage
+            let maxTextWidth = isBubble ? max((width * 0.78) - 24, 1) : width
+            let textBounds = attributedText.boundingRect(
+                with: NSSize(width: maxTextWidth, height: CGFloat.greatestFiniteMagnitude),
+                options: [.usesLineFragmentOrigin, .usesFontLeading]
+            )
+            let textSize = NSSize(width: ceil(textBounds.width), height: ceil(textBounds.height))
+
+            if isBubble {
+                let maxBubbleWidth = max(width * 0.78, 1)
+                let bubbleWidth = min(max(max(textSize.width + 24, 56), 1), maxBubbleWidth)
+                let bubbleHeight = textSize.height + 16
+                let bubbleX = item.isUserMessage ? width - bubbleWidth : 0
+                let bubbleRect = NSRect(x: bubbleX, y: y, width: bubbleWidth, height: bubbleHeight)
+                rows.append(
+                    RowLayout(
+                        item: item,
+                        frame: NSRect(x: 0, y: y, width: width, height: bubbleHeight),
+                        bubbleRect: bubbleRect,
+                        textRect: NSRect(
+                            x: bubbleRect.minX + 12,
+                            y: bubbleRect.minY + 8,
+                            width: bubbleRect.width - 24,
+                            height: textSize.height
+                        ),
+                        attributedText: attributedText
+                    )
+                )
+                y += bubbleHeight + 10
+            } else {
+                rows.append(
+                    RowLayout(
+                        item: item,
+                        frame: NSRect(x: 0, y: y, width: width, height: textSize.height),
+                        bubbleRect: .zero,
+                        textRect: NSRect(x: 0, y: y, width: width, height: textSize.height),
+                        attributedText: attributedText
+                    )
+                )
+                y += textSize.height + 10
+            }
+        }
+
+        return rows
+    }
+
+    private func attributedString(for item: ConversationTranscriptItem) -> NSAttributedString {
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.lineBreakMode = .byWordWrapping
+
+        let font: NSFont
+        let color: NSColor
+        switch item {
+        case .emptyPrompt:
+            font = NSFont.systemFont(ofSize: 16, weight: .medium)
+            color = .labelColor
+        case .status:
+            font = NSFont.systemFont(ofSize: 13)
+            color = .secondaryLabelColor
+        case .user, .assistant:
+            font = NSFont.systemFont(ofSize: 14)
+            color = .labelColor
+        }
+
+        return NSAttributedString(
+            string: item.text,
+            attributes: [
+                .font: font,
+                .foregroundColor: color,
+                .paragraphStyle: paragraphStyle
+            ]
+        )
+    }
+}
+
+private final class TranscriptRowView: NSView {
+    private let item: ConversationTranscriptItem
+    private let textView = NSTextView()
+
+    init(item: ConversationTranscriptItem) {
+        self.item = item
+        super.init(frame: .zero)
+        setupView()
+    }
+
+    required init?(coder: NSCoder) {
+        nil
+    }
+
+    override var isFlipped: Bool {
+        true
+    }
+
+    func apply(row: RowLayout) {
+        if item.isMessage {
+            frame = row.bubbleRect
+            textView.frame = NSRect(
+                x: 12,
+                y: 8,
+                width: max(row.bubbleRect.width - 24, 1),
+                height: row.textRect.height
+            )
+        } else {
+            frame = row.textRect
+            textView.frame = bounds
+        }
+
+        textView.textContainer?.containerSize = NSSize(
+            width: max(textView.frame.width, 1),
+            height: CGFloat.greatestFiniteMagnitude
+        )
+    }
+
+    private func setupView() {
+        wantsLayer = true
+        layer?.backgroundColor = item.bubbleFillColor?.cgColor ?? NSColor.clear.cgColor
+        layer?.borderColor = item.bubbleFillColor == nil ? NSColor.clear.cgColor : NSColor.black.withAlphaComponent(0.05).cgColor
+        layer?.borderWidth = item.bubbleFillColor == nil ? 0 : 1
+        layer?.cornerRadius = item.bubbleFillColor == nil ? 0 : 14
+
+        textView.isEditable = false
+        textView.isSelectable = true
+        textView.drawsBackground = false
+        textView.textContainerInset = .zero
+        textView.textContainer?.lineFragmentPadding = 0
+        textView.textContainer?.widthTracksTextView = true
+        textView.textContainer?.lineBreakMode = .byWordWrapping
+        textView.isHorizontallyResizable = false
+        textView.isVerticallyResizable = false
+        textView.font = item.font
+        textView.textColor = item.textColor
+        textView.string = item.text
+        textView.setAccessibilityLabel(item.text)
+
+        addSubview(textView)
+    }
+}
+
+private struct RowLayout {
+    let item: ConversationTranscriptItem
+    let frame: NSRect
+    let bubbleRect: NSRect
+    let textRect: NSRect
+    let attributedText: NSAttributedString
+}
+
+private extension ConversationTranscriptItem {
+    var text: String {
+        switch self {
+        case .emptyPrompt(let text), .user(let text), .assistant(let text), .status(let text):
+            text
+        }
+    }
+
+    var isMessage: Bool {
+        switch self {
+        case .user, .assistant:
+            true
+        case .emptyPrompt, .status:
+            false
+        }
+    }
+
+    var isUserMessage: Bool {
+        switch self {
+        case .user:
+            true
+        case .assistant, .emptyPrompt, .status:
+            false
+        }
+    }
+
+    var bubbleFillColor: NSColor? {
+        switch self {
+        case .user:
+            NSColor.systemBlue.withAlphaComponent(0.14)
+        case .assistant:
+            NSColor.black.withAlphaComponent(0.06)
+        case .emptyPrompt, .status:
+            nil
+        }
+    }
+
+    var font: NSFont {
+        switch self {
+        case .emptyPrompt:
+            NSFont.systemFont(ofSize: 16, weight: .medium)
+        case .status:
+            NSFont.systemFont(ofSize: 13)
+        case .user, .assistant:
+            NSFont.systemFont(ofSize: 14)
+        }
+    }
+
+    var textColor: NSColor {
+        switch self {
+        case .status:
+            .secondaryLabelColor
+        case .emptyPrompt, .user, .assistant:
+            .labelColor
+        }
     }
 }
 

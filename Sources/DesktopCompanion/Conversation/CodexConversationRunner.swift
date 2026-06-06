@@ -12,19 +12,19 @@ enum CodexConversationError: Error, Equatable {
     var userMessage: String {
         switch self {
         case .alreadyRunning:
-            "Codex is already thinking."
+            "Assistant is already thinking."
         case .codexNotFound:
-            "Could not find the Codex CLI. Install Codex or make sure it is at ~/.local/bin/codex."
+            "Could not find the assistant CLI. Install it or make sure it is at ~/.local/bin/codex."
         case .launchFailed(let message):
-            "Could not start Codex: \(message)"
+            "Could not start assistant: \(message)"
         case .failed(_, let message):
-            message.isEmpty ? "Codex exited without an answer." : message
+            message.isEmpty ? "Assistant exited without an answer." : message
         case .missingResponse:
-            "Codex finished without an answer."
+            "Assistant finished without an answer."
         case .timedOut:
-            "Codex took too long to answer."
+            "Assistant took too long to answer."
         case .cancelled:
-            "Codex request cancelled."
+            "Assistant request cancelled."
         }
     }
 }

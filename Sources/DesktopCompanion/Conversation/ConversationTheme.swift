@@ -249,13 +249,13 @@ enum ConversationThemeLoader {
             folderURL: URL(fileURLWithPath: "/"),
             bubbleSVGURL: URL(fileURLWithPath: "/"),
             metrics: ConversationBubbleMetrics(
-                width: 360,
-                minHeight: 190,
+                width: 520,
+                minHeight: 300,
                 maxVisibleHeightRatio: 0.5,
-                contentInsets: NSEdgeInsets(top: 34, left: 36, bottom: 26, right: 36),
-                inputHeight: 34,
-                transcriptInputSpacing: 12,
-                tailAnchor: NSPoint(x: 72, y: 0)
+                contentInsets: NSEdgeInsets(top: 42, left: 42, bottom: 30, right: 42),
+                inputHeight: 42,
+                transcriptInputSpacing: 16,
+                tailAnchor: NSPoint(x: 94, y: 0)
             ),
             tailStyle: .defaultStyle
         )

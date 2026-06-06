@@ -77,7 +77,7 @@ struct CodexConversationCommandTests {
     }
 
     @Test
-    func testConversationLayoutUsesMinimumHeightForShortContent() {
+    func testConversationLayoutUsesFixedHeightForShortContent() {
         let layout = ConversationBubbleLayout.layout(
             metrics: testMetrics(),
             transcriptHeight: 24,
@@ -86,16 +86,16 @@ struct CodexConversationCommandTests {
             visibleFrame: NSRect(x: 0, y: 0, width: 1000, height: 800)
         )
 
-        #expect(layout.size == NSSize(width: 360, height: 190))
+        #expect(layout.size == NSSize(width: 520, height: 300))
         #expect(!layout.isTranscriptScrollable)
-        #expect(layout.inputRect.maxY == 164)
-        #expect(layout.inputRect.minY == layout.transcriptRect.maxY + 12)
+        #expect(layout.inputRect.maxY == 270)
+        #expect(layout.inputRect.minY == layout.transcriptRect.maxY + 16)
         #expect(bodyScreenRect(from: layout).minY == testCompanionFrame().maxY + ConversationBubbleLayout.bodyCompanionGap)
-        #expect(layout.connectorEnd == NSPoint(x: 72, y: 322))
+        #expect(layout.connectorEnd == NSPoint(x: 94, y: 432))
     }
 
     @Test
-    func testConversationLayoutGrowsForMediumContent() {
+    func testConversationLayoutKeepsFixedHeightForMediumContent() {
         let layout = ConversationBubbleLayout.layout(
             metrics: testMetrics(),
             transcriptHeight: 220,
@@ -104,13 +104,13 @@ struct CodexConversationCommandTests {
             visibleFrame: NSRect(x: 0, y: 0, width: 1000, height: 800)
         )
 
-        #expect(layout.size.height == 326)
-        #expect(!layout.isTranscriptScrollable)
+        #expect(layout.size.height == 300)
+        #expect(layout.isTranscriptScrollable)
         #expect(bodyScreenRect(from: layout).minY == testCompanionFrame().maxY + ConversationBubbleLayout.bodyCompanionGap)
     }
 
     @Test
-    func testConversationLayoutCapsLongContentAndScrolls() {
+    func testConversationLayoutKeepsFixedHeightForLongContentAndScrolls() {
         let layout = ConversationBubbleLayout.layout(
             metrics: testMetrics(),
             transcriptHeight: 900,
@@ -119,7 +119,7 @@ struct CodexConversationCommandTests {
             visibleFrame: NSRect(x: 0, y: 0, width: 1000, height: 800)
         )
 
-        #expect(abs(layout.size.height - 400) < 0.001)
+        #expect(layout.size.height == 300)
         #expect(layout.isTranscriptScrollable)
         #expect(layout.frame.maxY <= 792)
     }
@@ -175,6 +175,39 @@ struct CodexConversationCommandTests {
     }
 
     @Test
+    func testConversationTranscriptItemsUseChatRowsWithoutSpeakerLabels() {
+        let model = ConversationTranscriptViewModel(
+            history: [
+                CodexConversationTurn(question: "tell me golang is?", answer: "Go is a programming language.")
+            ],
+            pendingQuestion: "What is concurrency?",
+            status: "Thinking..."
+        )
+
+        #expect(
+            model.items == [
+                .user("tell me golang is?"),
+                .assistant("Go is a programming language."),
+                .user("What is concurrency?"),
+                .status("Thinking...")
+            ]
+        )
+        #expect(!transcriptText(model.items).contains("Codex:"))
+        #expect(!transcriptText(model.items).contains("You:"))
+    }
+
+    @Test
+    func testConversationTranscriptShowsPromptWhenEmpty() {
+        let model = ConversationTranscriptViewModel(
+            history: [],
+            pendingQuestion: nil,
+            status: nil
+        )
+
+        #expect(model.items == [.emptyPrompt("Ask me anything.")])
+    }
+
+    @Test
     func testConversationThemeLoadsValidManifest() throws {
         let theme = try makeThemeFolder(
             manifest: """
@@ -216,11 +249,15 @@ struct CodexConversationCommandTests {
         #expect(theme.id == "cloud-default")
         #expect(theme.bubbleSVGURL.lastPathComponent == "bubble.svg")
         #expect(theme.bubbleSVGURL.path.contains("ConversationThemes/cloud-default"))
-        #expect(theme.metrics.width == 360)
-        #expect(theme.metrics.minHeight == 190)
-        #expect(theme.metrics.contentInsets.top == 34)
-        #expect(theme.metrics.inputHeight == 34)
-        #expect(theme.metrics.tailAnchor == NSPoint(x: 72, y: 0))
+        #expect(theme.metrics.width == 520)
+        #expect(theme.metrics.minHeight == 300)
+        #expect(theme.metrics.contentInsets.top == 42)
+        #expect(theme.metrics.contentInsets.left == 42)
+        #expect(theme.metrics.contentInsets.bottom == 30)
+        #expect(theme.metrics.contentInsets.right == 42)
+        #expect(theme.metrics.inputHeight == 42)
+        #expect(theme.metrics.transcriptInputSpacing == 16)
+        #expect(theme.metrics.tailAnchor == NSPoint(x: 94, y: 0))
         #expect(theme.tailStyle == .defaultStyle)
         #expect(FileManager.default.fileExists(atPath: theme.bubbleSVGURL.path))
         #expect(theme.bubbleImage.size.width > 0)
@@ -247,7 +284,7 @@ struct CodexConversationCommandTests {
             tailStyle: .defaultStyle
         )
 
-        #expect(theme.bubbleImage.size == NSSize(width: 360, height: 190))
+        #expect(theme.bubbleImage.size == NSSize(width: 520, height: 300))
     }
 
     @Test
@@ -336,6 +373,12 @@ struct CodexConversationCommandTests {
     }
 
     @Test
+    func testConversationErrorMessagesAvoidCodexLabel() {
+        #expect(!CodexConversationError.codexNotFound.userMessage.contains("Codex"))
+        #expect(!CodexConversationError.launchFailed("boom").userMessage.contains("Codex"))
+    }
+
+    @Test
     func testExecutableLocatorPrefersKnownCodexLocationsThenPath() {
         let locator = CodexExecutableLocator(
             environment: [
@@ -400,14 +443,23 @@ struct CodexConversationCommandTests {
 
     private func testMetrics() -> ConversationBubbleMetrics {
         ConversationBubbleMetrics(
-            width: 360,
-            minHeight: 190,
+            width: 520,
+            minHeight: 300,
             maxVisibleHeightRatio: 0.5,
-            contentInsets: NSEdgeInsets(top: 34, left: 36, bottom: 26, right: 36),
-            inputHeight: 34,
-            transcriptInputSpacing: 12,
-            tailAnchor: NSPoint(x: 72, y: 0)
+            contentInsets: NSEdgeInsets(top: 42, left: 42, bottom: 30, right: 42),
+            inputHeight: 42,
+            transcriptInputSpacing: 16,
+            tailAnchor: NSPoint(x: 94, y: 0)
         )
+    }
+
+    private func transcriptText(_ items: [ConversationTranscriptItem]) -> String {
+        items.map { item in
+            switch item {
+            case .emptyPrompt(let text), .user(let text), .assistant(let text), .status(let text):
+                text
+            }
+        }.joined(separator: "\n")
     }
 
     private func testCompanionFrame() -> NSRect {

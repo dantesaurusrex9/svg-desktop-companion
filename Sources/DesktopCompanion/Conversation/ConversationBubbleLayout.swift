@@ -61,13 +61,12 @@ enum ConversationBubbleLayout {
         let aboveSpace = max(visibleFrame.maxY - screenMargin - companionFrame.maxY - bodyCompanionGap, 0)
         let shouldPlaceAbove = aboveSpace >= min(metrics.minHeight, minimumUsableHeight)
         let maxHeight = shouldPlaceAbove ? min(maxPreferredHeight, aboveSpace) : maxPreferredHeight
-        let minimumHeight = min(metrics.minHeight, maxHeight)
         let desiredHeight = metrics.contentInsets.top
             + max(transcriptHeight, 1)
             + metrics.transcriptInputSpacing
             + metrics.inputHeight
             + metrics.contentInsets.bottom
-        let height = min(max(desiredHeight, minimumHeight), maxHeight)
+        let height = min(metrics.minHeight, maxHeight)
         let transcriptHeightThatFits = max(
             1,
             height
@@ -128,7 +127,7 @@ enum ConversationBubbleLayout {
                 x: mouthScreenPoint.x - frame.minX,
                 y: frame.maxY - mouthScreenPoint.y
             ),
-            isTranscriptScrollable: desiredHeight > maxHeight
+            isTranscriptScrollable: desiredHeight > height
         )
     }
 
