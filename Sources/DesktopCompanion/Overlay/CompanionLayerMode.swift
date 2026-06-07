@@ -28,20 +28,3 @@ enum CompanionLayerMode: String, CaseIterable, Codable {
         }
     }
 }
-
-enum CompanionLayerModeStore {
-    private static let key = "desktopCompanion.layerMode"
-
-    static func load() -> CompanionLayerMode {
-        guard let rawValue = UserDefaults.standard.string(forKey: key),
-              let layerMode = CompanionLayerMode(rawValue: rawValue) else {
-            return .desktop
-        }
-
-        return layerMode
-    }
-
-    static func save(_ layerMode: CompanionLayerMode) {
-        UserDefaults.standard.set(layerMode.rawValue, forKey: key)
-    }
-}

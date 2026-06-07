@@ -38,6 +38,20 @@ enum CompanionAnimationPreset: String, Codable, CaseIterable {
     }
 }
 
+enum CompanionAnimationState: String, CaseIterable {
+    case typing
+    case thinking
+
+    var title: String {
+        switch self {
+        case .typing:
+            "Typing"
+        case .thinking:
+            "Thinking"
+        }
+    }
+}
+
 struct CompanionAnchor: Codable, Equatable {
     var x: CGFloat
     var y: CGFloat
@@ -68,13 +82,7 @@ struct CompanionPackage: Equatable {
     let animationPreset: CompanionAnimationPreset
 }
 
-struct CompanionPackageSummary: Equatable {
-    let id: String
-    let displayName: String
-}
-
 enum CompanionPackageLoader {
-    static let selectedPackageDefaultsKey = "desktopCompanion.packageID"
     static let legacyUserPackageID = "desktop-companion-user-override"
     private static let maxManifestByteCount: UInt64 = 64_000
 
@@ -89,15 +97,9 @@ enum CompanionPackageLoader {
     }
 
     static func selectedPackage(
-        userDefaults: UserDefaults = .standard,
         fileManager: FileManager = .default
     ) -> CompanionPackage? {
         let packages = availablePackages(fileManager: fileManager)
-        if let selectedID = userDefaults.string(forKey: selectedPackageDefaultsKey),
-           let selectedPackage = packages.first(where: { $0.id == selectedID }) {
-            return selectedPackage
-        }
-
         if let legacyPackage = packages.first(where: { $0.id == legacyUserPackageID }) {
             return legacyPackage
         }
@@ -107,16 +109,6 @@ enum CompanionPackageLoader {
         }
 
         return packages.first
-    }
-
-    static func saveSelectedPackageID(_ packageID: String, userDefaults: UserDefaults = .standard) {
-        userDefaults.set(packageID, forKey: selectedPackageDefaultsKey)
-    }
-
-    static func availablePackageSummaries() -> [CompanionPackageSummary] {
-        availablePackages().map {
-            CompanionPackageSummary(id: $0.id, displayName: $0.displayName)
-        }
     }
 
     static func package(id packageID: String, fileManager: FileManager = .default) -> CompanionPackage? {
@@ -136,6 +128,10 @@ enum CompanionPackageLoader {
                 uniquePackages.append(package)
             }
         }
+    }
+
+    static func libraryPackages(fileManager: FileManager = .default) -> [CompanionPackage] {
+        availablePackages(fileManager: fileManager).filter { $0.id != legacyUserPackageID }
     }
 
     static func loadPackage(from folderURL: URL, fileManager: FileManager = .default) throws -> CompanionPackage {
@@ -203,7 +199,7 @@ enum CompanionPackageLoader {
         return packages(in: userPackagesDirectory, fileManager: fileManager)
     }
 
-    private static func bundledPackages(fileManager: FileManager) -> [CompanionPackage] {
+    fileprivate static func bundledPackages(fileManager: FileManager) -> [CompanionPackage] {
         guard let bundledPackagesDirectory = Bundle.module.resourceURL?
             .appendingPathComponent("Companions", isDirectory: true) else {
             return []
@@ -212,7 +208,7 @@ enum CompanionPackageLoader {
         return packages(in: bundledPackagesDirectory, fileManager: fileManager)
     }
 
-    private static func packages(in directoryURL: URL, fileManager: FileManager) -> [CompanionPackage] {
+    fileprivate static func packages(in directoryURL: URL, fileManager: FileManager) -> [CompanionPackage] {
         guard let folderURLs = try? fileManager.contentsOfDirectory(
             at: directoryURL,
             includingPropertiesForKeys: [.isDirectoryKey],
@@ -289,22 +285,19 @@ enum CompanionPackageLoader {
     }
 
     private static func dataIfSmall(from url: URL, maxBytes: UInt64, fileManager: FileManager) throws -> Data {
-        if let fileSize = try? fileManager.attributesOfItem(atPath: url.path)[.size] as? NSNumber,
-           fileSize.uint64Value > maxBytes {
+        do {
+            return try BoundedFileReader.data(from: url, maxBytes: maxBytes, fileManager: fileManager)
+        } catch BoundedFileReaderError.fileTooLarge {
             throw CompanionPackageError.invalidManifest
+        } catch {
+            throw error
         }
-
-        let data = try Data(contentsOf: url)
-        guard data.count <= maxBytes else {
-            throw CompanionPackageError.invalidManifest
-        }
-
-        return data
     }
 }
 
 enum CompanionPackageError: Error, Equatable {
     case invalidManifest
+    case packageAlreadyInstalled(String)
 }
 
 private struct CompanionPackageManifest: Codable {
@@ -328,7 +321,8 @@ enum CompanionPackageInstaller {
         speechAnchor: NSPoint,
         bubblePlacement: CompanionBubblePlacement,
         animationPreset: CompanionAnimationPreset,
-        fileManager: FileManager = .default
+        fileManager: FileManager = .default,
+        packagesDirectory destinationPackagesDirectory: URL? = nil
     ) throws -> CompanionPackage {
         let markup = try CompanionAsset.safeSVGMarkup(from: sourceSVGURL, fileManager: fileManager)
         guard CompanionAsset.isUsableCompanionSVG(markup),
@@ -336,8 +330,19 @@ enum CompanionPackageInstaller {
             throw CompanionPackageError.invalidManifest
         }
 
-        let packageID = uniquePackageID(baseID: slug(from: displayName), fileManager: fileManager)
-        let packageDirectory = try userPackagesDirectory(fileManager: fileManager)
+        let packagesDirectory: URL
+        if let destinationPackagesDirectory {
+            packagesDirectory = destinationPackagesDirectory
+            try fileManager.createDirectory(at: packagesDirectory, withIntermediateDirectories: true)
+        } else {
+            packagesDirectory = try userPackagesDirectory(fileManager: fileManager)
+        }
+        let packageID = uniquePackageID(
+            baseID: slug(from: displayName),
+            packagesDirectory: packagesDirectory,
+            fileManager: fileManager
+        )
+        let packageDirectory = packagesDirectory
             .appendingPathComponent(packageID, isDirectory: true)
         try fileManager.createDirectory(at: packageDirectory, withIntermediateDirectories: true)
 
@@ -378,6 +383,10 @@ enum CompanionPackageInstaller {
         }
 
         try fileManager.createDirectory(at: packagesDirectory, withIntermediateDirectories: true)
+        guard !fileManager.fileExists(atPath: destinationURL.path) else {
+            throw CompanionPackageError.packageAlreadyInstalled(sourcePackage.id)
+        }
+
         let temporaryURL = packagesDirectory
             .appendingPathComponent(".\(sourcePackage.id)-\(UUID().uuidString)", isDirectory: true)
 
@@ -389,7 +398,7 @@ enum CompanionPackageInstaller {
                 destinationRootURL: temporaryURL,
                 fileManager: fileManager
             )
-            try replacePackage(at: destinationURL, with: temporaryURL, fileManager: fileManager)
+            try fileManager.moveItem(at: temporaryURL, to: destinationURL)
         } catch {
             try? fileManager.removeItem(at: temporaryURL)
             throw error
@@ -523,25 +532,6 @@ enum CompanionPackageInstaller {
         try fileManager.copyItem(at: sourceURL, to: destinationURL)
     }
 
-    private static func replacePackage(at destinationURL: URL, with temporaryURL: URL, fileManager: FileManager) throws {
-        guard fileManager.fileExists(atPath: destinationURL.path) else {
-            try fileManager.moveItem(at: temporaryURL, to: destinationURL)
-            return
-        }
-
-        let backupURL = destinationURL
-            .deletingLastPathComponent()
-            .appendingPathComponent(".\(destinationURL.lastPathComponent)-backup-\(UUID().uuidString)", isDirectory: true)
-        try fileManager.moveItem(at: destinationURL, to: backupURL)
-        do {
-            try fileManager.moveItem(at: temporaryURL, to: destinationURL)
-            try? fileManager.removeItem(at: backupURL)
-        } catch {
-            try? fileManager.moveItem(at: backupURL, to: destinationURL)
-            throw error
-        }
-    }
-
     private static func relativePath(of fileURL: URL, under rootURL: URL) -> String? {
         let rootPath = rootURL.standardizedFileURL.path
         let filePath = fileURL.standardizedFileURL.path
@@ -565,12 +555,18 @@ enum CompanionPackageInstaller {
         return values.isSymbolicLink == true || values.isAliasFile == true
     }
 
-    private static func uniquePackageID(baseID: String, fileManager: FileManager) -> String {
+    private static func uniquePackageID(
+        baseID: String,
+        packagesDirectory: URL,
+        fileManager: FileManager
+    ) -> String {
         let rootID = baseID.isEmpty ? "companion" : baseID
-        let existingIDs = Set(CompanionPackageLoader.availablePackages(fileManager: fileManager).map(\.id))
-        guard let packagesDirectory = CompanionPackageLoader.userPackagesDirectory else {
-            return existingIDs.contains(rootID) ? "\(rootID)-2" : rootID
-        }
+        let existingIDs = Set(
+            (
+                CompanionPackageLoader.packages(in: packagesDirectory, fileManager: fileManager)
+                    + CompanionPackageLoader.bundledPackages(fileManager: fileManager)
+            ).map(\.id)
+        )
 
         var candidate = rootID
         var suffix = 2
@@ -583,11 +579,14 @@ enum CompanionPackageInstaller {
     }
 
     private static func slug(from value: String) -> String {
-        let lowercased = value.lowercased()
+        let lowercased = value
+            .folding(options: [.diacriticInsensitive, .widthInsensitive], locale: Locale(identifier: "en_US_POSIX"))
+            .lowercased()
+        let allowedScalars = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyz0123456789")
         var slug = ""
         var previousWasSeparator = false
         for scalar in lowercased.unicodeScalars {
-            if CharacterSet.alphanumerics.contains(scalar) {
+            if allowedScalars.contains(scalar) {
                 slug.unicodeScalars.append(scalar)
                 previousWasSeparator = false
             } else if !previousWasSeparator {

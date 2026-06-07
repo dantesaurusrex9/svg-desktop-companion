@@ -10,6 +10,7 @@ enum ConversationTranscriptItem: Equatable {
 struct ConversationTranscriptViewModel {
     let history: [CodexConversationTurn]
     let pendingQuestion: String?
+    let streamingAnswer: String?
     let status: String?
 
     var items: [ConversationTranscriptItem] {
@@ -21,6 +22,11 @@ struct ConversationTranscriptViewModel {
 
         if let pendingQuestion {
             items.append(.user(pendingQuestion))
+        }
+
+        if let streamingAnswer,
+           !streamingAnswer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            items.append(.assistant(streamingAnswer))
         }
 
         if let status {

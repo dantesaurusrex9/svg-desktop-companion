@@ -37,6 +37,7 @@ for pattern in (
     r"<script\b",
     r"<foreignObject\b",
     r"\son[a-zA-Z]+\s*=",
+    r"@import\b",
 ):
     if re.search(pattern, markup, re.IGNORECASE):
         fail(f"Unsafe SVG feature is not supported: {svg_path}")

@@ -38,31 +38,32 @@ Custom app bundles use `APP_NAME` as their Application Support folder by default
 ## Controls
 
 - The app opens to a compact companion library window.
-- Click `Spawn` to create a desktop companion from any available package.
+- Click `Spawn` to create an always-on-top desktop companion from any available package.
 - Click `Import SVG` to turn a bounded SVG into a package with speech anchor and animation metadata.
 - Click `Import Package` to install an existing package folder.
 - Hover over the companion to reveal the quit button.
 - Drag while hovering to move it.
-- Right-click and choose `Preview Animation` to preview the typing animation.
+- Use the library row preview buttons, or right-click and choose `Preview Animation`, to preview typing or thinking animations.
 - Right-click and choose `Conversate` to ask a general question through the local Codex CLI.
-- Right-click and choose `Bubble Theme` or `Reload Bubble Theme` to change the conversation bubble skin.
+- Drag or resize the transparent conversation text overlay to adjust its position and preferred size for that companion.
+- Right-click and choose `Overlay Theme` or `Reload Overlay Theme` to change the conversation overlay metrics.
 - Right-click and choose `Layer` to switch between `Desktop`, `Floating`, and `Always On Top`.
 - Right-click and choose `Remove Companion`.
 - Press `Control + Option + Command + Q` to quit.
 
 ## Conversate
 
-The companion can open a speech bubble and send general questions to the local `codex` CLI. It runs `codex exec` in an isolated app-support folder with a read-only sandbox, so it is intended for casual answers rather than editing this repository.
+The companion can open a transparent conversation overlay and send general questions to the local `codex` CLI. It streams the assistant response into the overlay as text arrives, expands the text area up to the safe visible screen bounds, and plays the thinking animation while the request is running. It runs `codex exec` in an isolated app-support folder with a read-only sandbox, so it is intended for casual answers rather than editing this repository.
 
 The app looks for `codex` at `~/.local/bin/codex`, `/opt/homebrew/bin/codex`, `/usr/local/bin/codex`, and then the app process `PATH`.
 
-The speech bubble is themeable. Bundled themes live in `Sources/DesktopCompanion/Resources/ConversationThemes`, and downloaded local themes can be placed under:
+The conversation overlay metrics are themeable. Bundled themes live in `Sources/DesktopCompanion/Resources/ConversationThemes`, and downloaded local themes can be placed under:
 
 ```sh
 ~/Library/Application Support/<support-dir>/ConversationThemes/<theme-id>/
 ```
 
-Each bubble theme folder contains a `theme.json` manifest and SVG assets, usually `bubble.svg`. Use the right-click `Bubble Theme` submenu to select a theme, or `Reload Bubble Theme` after changing files. `tailAnchor` is the connector attachment point on the bubble body, measured from the bubble body's lower-left corner. `tailFillColor` and `tailStrokeColor` are optional `#RRGGBB` or `#RRGGBBAA` colors for the connector.
+Each theme folder contains a `theme.json` manifest and SVG assets, usually `bubble.svg` for compatibility. Use the right-click `Overlay Theme` submenu to select a theme, or `Reload Overlay Theme` after changing files. The transparent overlay uses the manifest width, content insets, input height, spacing, and anchor metrics; `tailFillColor` and `tailStrokeColor` are retained for older themes.
 
 Minimal `theme.json`:
 
@@ -127,7 +128,7 @@ open .build/app/DesktopCompanion.app
 
 Keep the SVG inside `viewBox="0 0 220 220"` so it stays within the desktop object's bounds. The app ignores a manually placed runtime override that does not use those bounds. Custom SVGs without LEGO-specific hook classes still render and can use the whole-object typing reaction; to keep the built-in floor-bash frames, preserve hook classes such as `lego-smash-arm`, `floor-crack`, and `impact-lines`.
 
-To align the conversation bubble tail for a custom companion SVG, set `speechAnchor` in `companion.json` in the same `0 0 220 220` coordinate space:
+To align the transparent conversation overlay for a custom companion SVG, set `speechAnchor` in `companion.json` in the same `0 0 220 220` coordinate space:
 
 ```json
 "speechAnchor": { "x": 121, "y": 94 }
@@ -169,9 +170,9 @@ Minimal `companion.json`:
 }
 ```
 
-Package IDs must use lowercase letters, numbers, and hyphens. Add `"conversationThemesDirectory": "ConversationThemes"` when the package includes bubble themes. Install package folders under `~/Library/Application Support/<support-dir>/Companions/`, use `Import Package` in the library window, or pass one to `make app COMPANION_PACKAGE=/path/to/package` to embed it in the app bundle.
+Package IDs must use lowercase letters, numbers, and hyphens. Add `"conversationThemesDirectory": "ConversationThemes"` when the package includes conversation overlay themes. Install package folders under `~/Library/Application Support/<support-dir>/Companions/`, use `Import Package` in the library window, or pass one to `make app COMPANION_PACKAGE=/path/to/package` to embed it in the app bundle.
 
-Supported `bubblePlacement` values are `automatic`, `above`, `right`, and `left`. Supported `animationPreset` values are `idleOnly`, `wholeObjectReaction`, and `legoSmash`.
+Supported `bubblePlacement` values are `automatic`, `above`, `right`, and `left`. Supported `animationPreset` values are `idleOnly`, `wholeObjectReaction`, and `legoSmash`. Each active preset supports shared animation states for typing and thinking; `idleOnly` disables both.
 
 ## Typing Detection
 

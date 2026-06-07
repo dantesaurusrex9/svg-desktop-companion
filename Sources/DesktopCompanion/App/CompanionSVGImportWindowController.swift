@@ -17,12 +17,12 @@ final class CompanionSVGImportWindowController: NSWindowController {
 
     init(defaultName: String, defaultAnchor: NSPoint) {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 420, height: 270),
+            contentRect: NSRect(x: 0, y: 0, width: 440, height: 286),
             styleMask: [.titled],
             backing: .buffered,
             defer: false
         )
-        window.title = "Import SVG"
+        window.title = AppCopy.importSVGAction
         window.isReleasedWhenClosed = false
 
         super.init(window: window)
@@ -49,20 +49,26 @@ final class CompanionSVGImportWindowController: NSWindowController {
         root.wantsLayer = true
         root.layer?.backgroundColor = AppTheme.background.cgColor
 
+        AppTheme.styleField(nameField)
+        AppTheme.styleField(anchorXField)
+        AppTheme.styleField(anchorYField)
+        placementPopup.font = AppTypography.field
+        animationPopup.font = AppTypography.field
+
         let formStack = NSStackView()
         formStack.orientation = .vertical
-        formStack.spacing = 12
+        formStack.spacing = 14
         formStack.translatesAutoresizingMaskIntoConstraints = false
 
-        formStack.addArrangedSubview(row(label: "Name", control: nameField))
+        formStack.addArrangedSubview(row(label: AppCopy.nameLabel, control: nameField))
         formStack.addArrangedSubview(anchorRow())
-        formStack.addArrangedSubview(row(label: "Bubble", control: placementPopup))
-        formStack.addArrangedSubview(row(label: "Animation", control: animationPopup))
+        formStack.addArrangedSubview(row(label: AppCopy.bubbleLabel, control: placementPopup))
+        formStack.addArrangedSubview(row(label: AppCopy.animationLabel, control: animationPopup))
 
         configurePopups()
 
-        let cancelButton = AppTheme.button("Cancel", target: self, action: #selector(cancelRequested))
-        let saveButton = AppTheme.button("Save", target: self, action: #selector(saveRequested))
+        let cancelButton = AppTheme.button(AppCopy.cancelAction, target: self, action: #selector(cancelRequested))
+        let saveButton = AppTheme.primaryButton(AppCopy.saveAction, target: self, action: #selector(saveRequested))
         let buttonStack = NSStackView(views: [cancelButton, saveButton])
         buttonStack.orientation = .horizontal
         buttonStack.spacing = 8
@@ -78,14 +84,17 @@ final class CompanionSVGImportWindowController: NSWindowController {
             formStack.topAnchor.constraint(equalTo: root.topAnchor, constant: 24),
 
             buttonStack.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -24),
-            buttonStack.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -20)
+            buttonStack.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -20),
+
+            cancelButton.widthAnchor.constraint(equalToConstant: 82),
+            saveButton.widthAnchor.constraint(equalToConstant: 82)
         ])
 
         return root
     }
 
     private func row(label: String, control: NSControl) -> NSView {
-        let labelView = AppTheme.label(label, font: NSFont.systemFont(ofSize: 12, weight: .medium), color: AppTheme.secondaryText)
+        let labelView = AppTheme.label(label, font: AppTypography.formLabel, color: AppTheme.secondaryText)
         labelView.translatesAutoresizingMaskIntoConstraints = false
         control.translatesAutoresizingMaskIntoConstraints = false
 
@@ -96,17 +105,18 @@ final class CompanionSVGImportWindowController: NSWindowController {
         stack.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
             labelView.widthAnchor.constraint(equalToConstant: 74),
+            control.widthAnchor.constraint(greaterThanOrEqualToConstant: 240),
             control.heightAnchor.constraint(equalToConstant: 28)
         ])
         return stack
     }
 
     private func anchorRow() -> NSView {
-        let labelView = AppTheme.label("Speech", font: NSFont.systemFont(ofSize: 12, weight: .medium), color: AppTheme.secondaryText)
+        let labelView = AppTheme.label(AppCopy.speechLabel, font: AppTypography.formLabel, color: AppTheme.secondaryText)
         labelView.translatesAutoresizingMaskIntoConstraints = false
 
-        let xLabel = AppTheme.label("X", font: NSFont.systemFont(ofSize: 12), color: AppTheme.secondaryText)
-        let yLabel = AppTheme.label("Y", font: NSFont.systemFont(ofSize: 12), color: AppTheme.secondaryText)
+        let xLabel = AppTheme.label(AppCopy.xAxisLabel, font: AppTypography.smallLabel, color: AppTheme.secondaryText)
+        let yLabel = AppTheme.label(AppCopy.yAxisLabel, font: AppTypography.smallLabel, color: AppTheme.secondaryText)
         anchorXField.translatesAutoresizingMaskIntoConstraints = false
         anchorYField.translatesAutoresizingMaskIntoConstraints = false
 

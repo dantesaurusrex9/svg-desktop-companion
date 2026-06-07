@@ -26,19 +26,19 @@ struct ConversationBubbleMetrics: Equatable {
 
 struct ConversationBubbleLayoutResult: Equatable {
     let size: NSSize
+    let bodyOffset: NSPoint
     let bodyRect: NSRect
     let transcriptRect: NSRect
     let inputRect: NSRect
     let frame: NSRect
-    let connectorStart: NSPoint
-    let connectorEnd: NSPoint
     let isTranscriptScrollable: Bool
 }
 
 enum ConversationBubbleLayout {
     static let screenMargin: CGFloat = 8
     static let bodyCompanionGap: CGFloat = 12
-    private static let connectorPadding: CGFloat = 18
+    static let controlTopGutter: CGFloat = 48
+    static let controlRightGutter: CGFloat = 56
 
     static func layout(
         metrics: ConversationBubbleMetrics,
@@ -46,39 +46,43 @@ enum ConversationBubbleLayout {
         anchoredAt mouthScreenPoint: NSPoint,
         companionFrame: NSRect,
         visibleFrame: NSRect,
-        placement: CompanionBubblePlacement = .automatic
+        placement: CompanionBubblePlacement = .automatic,
+        preferredBodySize: NSSize? = nil,
+        bodyOffset: NSPoint? = nil
     ) -> ConversationBubbleLayoutResult {
-        let width = bubbleWidth(metrics: metrics, visibleFrame: visibleFrame)
         let availableHeight = max(visibleFrame.height - (screenMargin * 2), 1)
-        let minimumUsableHeight = metrics.contentInsets.top
+        let insets = effectiveContentInsets(metrics: metrics)
+        let minimumUsableHeight = insets.top
             + 1
             + metrics.transcriptInputSpacing
             + metrics.inputHeight
-            + metrics.contentInsets.bottom
-        let maxPreferredHeight = min(
-            availableHeight,
-            max(visibleFrame.height * metrics.maxVisibleHeightRatio, minimumUsableHeight)
-        )
+            + insets.bottom
+        let maxPreferredHeight = max(availableHeight, minimumUsableHeight)
         let aboveSpace = max(visibleFrame.maxY - screenMargin - companionFrame.maxY - bodyCompanionGap, 0)
         let shouldPlaceAbove = placement == .above
             || (placement == .automatic && aboveSpace >= min(metrics.minHeight, minimumUsableHeight))
         let maxHeight = shouldPlaceAbove ? min(maxPreferredHeight, max(aboveSpace, minimumUsableHeight)) : maxPreferredHeight
-        let desiredHeight = metrics.contentInsets.top
+        let desiredHeight = insets.top
             + max(transcriptHeight, 1)
             + metrics.transcriptInputSpacing
             + metrics.inputHeight
-            + metrics.contentInsets.bottom
-        let height = min(metrics.minHeight, maxHeight)
+            + insets.bottom
+        let size = bodySize(
+            metrics: metrics,
+            visibleFrame: visibleFrame,
+            maxHeight: maxHeight,
+            contentHeight: desiredHeight,
+            preferredBodySize: preferredBodySize
+        )
         let transcriptHeightThatFits = max(
             1,
-            height
-                - metrics.contentInsets.top
+            size.height
+                - insets.top
                 - metrics.transcriptInputSpacing
                 - metrics.inputHeight
-                - metrics.contentInsets.bottom
+                - insets.bottom
         )
-        let size = NSSize(width: width, height: height)
-        let bodyFrame = bodyFrame(
+        let automaticBodyFrame = bodyFrame(
             size: size,
             metrics: metrics,
             mouthScreenPoint: mouthScreenPoint,
@@ -87,16 +91,16 @@ enum ConversationBubbleLayout {
             placement: placement,
             placeAbove: shouldPlaceAbove
         )
-        let connectorStartScreenPoint = connectorStart(
-            bodyFrame: bodyFrame,
-            metrics: metrics,
-            mouthScreenPoint: mouthScreenPoint
+        let bodyFrame = offsetBodyFrame(
+            automaticBodyFrame,
+            offset: bodyOffset ?? .zero,
+            visibleFrame: visibleFrame
         )
-        let frame = windowFrame(
-            bodyFrame: bodyFrame,
-            connectorStart: connectorStartScreenPoint,
-            connectorEnd: mouthScreenPoint
+        let effectiveBodyOffset = NSPoint(
+            x: bodyFrame.minX - automaticBodyFrame.minX,
+            y: bodyFrame.minY - automaticBodyFrame.minY
         )
+        let frame = windowFrame(bodyFrame: bodyFrame)
         let bodyRect = NSRect(
             x: bodyFrame.minX - frame.minX,
             y: frame.maxY - bodyFrame.maxY,
@@ -104,39 +108,82 @@ enum ConversationBubbleLayout {
             height: bodyFrame.height
         )
         let transcriptRect = NSRect(
-            x: bodyRect.minX + metrics.contentInsets.left,
-            y: bodyRect.minY + metrics.contentInsets.top,
-            width: contentWidth(metrics: metrics, visibleFrame: visibleFrame),
+            x: bodyRect.minX + insets.left,
+            y: bodyRect.minY + insets.top,
+            width: contentWidth(metrics: metrics, visibleFrame: visibleFrame, preferredBodySize: preferredBodySize),
             height: transcriptHeightThatFits
         )
         let inputRect = NSRect(
-            x: bodyRect.minX + metrics.contentInsets.left,
-            y: bodyRect.minY + height - metrics.contentInsets.bottom - metrics.inputHeight,
+            x: bodyRect.minX + insets.left,
+            y: bodyRect.minY + size.height - insets.bottom - metrics.inputHeight,
             width: transcriptRect.width,
             height: metrics.inputHeight
         )
 
         return ConversationBubbleLayoutResult(
             size: size,
+            bodyOffset: effectiveBodyOffset,
             bodyRect: bodyRect,
             transcriptRect: transcriptRect,
             inputRect: inputRect,
             frame: frame,
-            connectorStart: NSPoint(
-                x: connectorStartScreenPoint.x - frame.minX,
-                y: frame.maxY - connectorStartScreenPoint.y
-            ),
-            connectorEnd: NSPoint(
-                x: mouthScreenPoint.x - frame.minX,
-                y: frame.maxY - mouthScreenPoint.y
-            ),
-            isTranscriptScrollable: desiredHeight > height
+            isTranscriptScrollable: desiredHeight > size.height
         )
     }
 
-    static func contentWidth(metrics: ConversationBubbleMetrics, visibleFrame: NSRect) -> CGFloat {
-        let width = bubbleWidth(metrics: metrics, visibleFrame: visibleFrame)
-        return max(width - metrics.contentInsets.left - metrics.contentInsets.right, 1)
+    static func contentWidth(
+        metrics: ConversationBubbleMetrics,
+        visibleFrame: NSRect,
+        preferredBodySize: NSSize? = nil
+    ) -> CGFloat {
+        let width = bodyWidth(metrics: metrics, visibleFrame: visibleFrame, preferredBodySize: preferredBodySize)
+        let insets = effectiveContentInsets(metrics: metrics)
+        return max(width - insets.left - insets.right, 1)
+    }
+
+    static func bodySize(
+        metrics: ConversationBubbleMetrics,
+        visibleFrame: NSRect,
+        maxHeight: CGFloat? = nil,
+        contentHeight: CGFloat? = nil,
+        preferredBodySize: NSSize? = nil
+    ) -> NSSize {
+        let heightLimit = maxHeight ?? max(
+            visibleFrame.height - (screenMargin * 2),
+            minimumUsableHeight(metrics: metrics)
+        )
+        let minimumHeight = min(minimumUsableHeight(metrics: metrics), heightLimit)
+        let desiredHeight = max(
+            minimumUsableHeight(metrics: metrics),
+            preferredBodySize?.height ?? 0,
+            contentHeight ?? 0
+        )
+
+        return NSSize(
+            width: bodyWidth(metrics: metrics, visibleFrame: visibleFrame, preferredBodySize: preferredBodySize),
+            height: clamped(desiredHeight, min: minimumHeight, max: heightLimit)
+        )
+    }
+
+    private static func offsetBodyFrame(
+        _ bodyFrame: NSRect,
+        offset: NSPoint,
+        visibleFrame: NSRect
+    ) -> NSRect {
+        NSRect(
+            x: clamped(
+                bodyFrame.minX + offset.x,
+                min: visibleFrame.minX + screenMargin,
+                max: visibleFrame.maxX - bodyFrame.width - screenMargin
+            ),
+            y: clamped(
+                bodyFrame.minY + offset.y,
+                min: visibleFrame.minY + screenMargin,
+                max: visibleFrame.maxY - bodyFrame.height - screenMargin
+            ),
+            width: bodyFrame.width,
+            height: bodyFrame.height
+        )
     }
 
     private static func bodyFrame(
@@ -195,44 +242,41 @@ enum ConversationBubbleLayout {
         )
     }
 
-    private static func connectorStart(
-        bodyFrame: NSRect,
+    private static func windowFrame(bodyFrame: NSRect) -> NSRect {
+        bodyFrame
+    }
+
+    private static func bodyWidth(
         metrics: ConversationBubbleMetrics,
-        mouthScreenPoint: NSPoint
-    ) -> NSPoint {
-        if mouthScreenPoint.x < bodyFrame.minX {
-            return NSPoint(x: bodyFrame.minX, y: clamped(mouthScreenPoint.y, min: bodyFrame.minY + 24, max: bodyFrame.maxY - 24))
-        }
-
-        if mouthScreenPoint.x > bodyFrame.maxX {
-            return NSPoint(x: bodyFrame.maxX, y: clamped(mouthScreenPoint.y, min: bodyFrame.minY + 24, max: bodyFrame.maxY - 24))
-        }
-
-        let tailAnchor = effectiveTailAnchor(metrics: metrics, size: bodyFrame.size)
-        return NSPoint(
-            x: bodyFrame.minX + tailAnchor.x,
-            y: bodyFrame.minY + tailAnchor.y
-        )
-    }
-
-    private static func windowFrame(
-        bodyFrame: NSRect,
-        connectorStart: NSPoint,
-        connectorEnd: NSPoint
-    ) -> NSRect {
-        let connectorFrame = NSRect(
-            x: min(connectorStart.x, connectorEnd.x) - connectorPadding,
-            y: min(connectorStart.y, connectorEnd.y) - connectorPadding,
-            width: abs(connectorStart.x - connectorEnd.x) + (connectorPadding * 2),
-            height: abs(connectorStart.y - connectorEnd.y) + (connectorPadding * 2)
-        )
-
-        return bodyFrame.union(connectorFrame)
-    }
-
-    private static func bubbleWidth(metrics: ConversationBubbleMetrics, visibleFrame: NSRect) -> CGFloat {
+        visibleFrame: NSRect,
+        preferredBodySize: NSSize?
+    ) -> CGFloat {
         let availableWidth = max(visibleFrame.width - (screenMargin * 2), 1)
-        return min(metrics.width, availableWidth)
+        let insets = effectiveContentInsets(metrics: metrics)
+        let minimumWidth = min(
+            metrics.width,
+            max(insets.left + insets.right + 160, 220)
+        )
+        let desiredWidth = preferredBodySize?.width ?? metrics.width
+        return clamped(desiredWidth, min: min(minimumWidth, availableWidth), max: availableWidth)
+    }
+
+    private static func minimumUsableHeight(metrics: ConversationBubbleMetrics) -> CGFloat {
+        let insets = effectiveContentInsets(metrics: metrics)
+        return insets.top
+            + 1
+            + metrics.transcriptInputSpacing
+            + metrics.inputHeight
+            + insets.bottom
+    }
+
+    private static func effectiveContentInsets(metrics: ConversationBubbleMetrics) -> NSEdgeInsets {
+        NSEdgeInsets(
+            top: max(metrics.contentInsets.top, controlTopGutter),
+            left: metrics.contentInsets.left,
+            bottom: metrics.contentInsets.bottom,
+            right: max(metrics.contentInsets.right, controlRightGutter)
+        )
     }
 
     private static func effectiveTailAnchor(metrics: ConversationBubbleMetrics, size: NSSize) -> NSPoint {

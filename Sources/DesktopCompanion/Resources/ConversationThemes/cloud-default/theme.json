@@ -4,20 +4,20 @@
   "displayName": "Cloud Default",
   "bubbleSVG": "bubble.svg",
   "width": 520,
-  "minHeight": 300,
-  "maxVisibleHeightRatio": 0.5,
+  "minHeight": 118,
+  "maxVisibleHeightRatio": 0.95,
   "contentInsets": {
-    "top": 42,
-    "left": 42,
-    "bottom": 30,
-    "right": 42
+    "top": 20,
+    "left": 18,
+    "bottom": 12,
+    "right": 18
   },
-  "inputHeight": 42,
-  "transcriptInputSpacing": 16,
+  "inputHeight": 36,
+  "transcriptInputSpacing": 12,
   "tailAnchor": {
-    "x": 94,
+    "x": 80,
     "y": 0
   },
-  "tailFillColor": "#FFFFFFF5",
-  "tailStrokeColor": "#0000001F"
+  "tailFillColor": "#FFFFFFFA",
+  "tailStrokeColor": "#0000001A"
 }

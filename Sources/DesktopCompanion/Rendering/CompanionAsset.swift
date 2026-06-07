@@ -76,6 +76,7 @@ enum CompanionAsset {
               !matchesAnyUnsafePattern(in: markup),
               !hasUnsafeReference(in: markup, attributeName: "href"),
               !hasUnsafeReference(in: markup, attributeName: "xlink:href"),
+              !hasCSSImport(in: markup),
               !hasUnsafeCSSURL(in: markup) else {
             return false
         }
@@ -84,14 +85,16 @@ enum CompanionAsset {
     }
 
     static func safeSVGMarkup(from url: URL, fileManager: FileManager = .default) throws -> String {
-        if let fileSize = try? fileManager.attributesOfItem(atPath: url.path)[.size] as? NSNumber,
-           fileSize.uint64Value > UInt64(maxSVGByteCount) {
+        let data: Data
+        do {
+            data = try BoundedFileReader.data(from: url, maxBytes: UInt64(maxSVGByteCount), fileManager: fileManager)
+        } catch BoundedFileReaderError.fileTooLarge {
             throw CompanionPackageError.invalidManifest
+        } catch {
+            throw error
         }
 
-        let data = try Data(contentsOf: url)
-        guard data.count <= maxSVGByteCount,
-              let markup = String(data: data, encoding: .utf8),
+        guard let markup = String(data: data, encoding: .utf8),
               isSafeSVGMarkup(markup) else {
             throw CompanionPackageError.invalidManifest
         }
@@ -202,6 +205,10 @@ enum CompanionAsset {
         }
 
         return false
+    }
+
+    private static func hasCSSImport(in markup: String) -> Bool {
+        markup.range(of: #"@import\b"#, options: [.regularExpression, .caseInsensitive]) != nil
     }
 
     private static func isValid(_ anchor: NSPoint) -> Bool {
