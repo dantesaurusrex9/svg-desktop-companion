@@ -30,7 +30,17 @@ enum CodexConversationError: Error, Equatable {
 }
 
 @MainActor
-final class CodexConversationRunner {
+protocol CodexConversationRunning: AnyObject {
+    func run(
+        question: String,
+        history: [CodexConversationTurn],
+        completion: @escaping (Result<String, CodexConversationError>) -> Void
+    )
+    func cancel()
+}
+
+@MainActor
+final class CodexConversationRunner: CodexConversationRunning {
     private let locator: CodexExecutableLocator
     private let fileManager: FileManager
     private var process: Process?

@@ -62,6 +62,9 @@ final class CompanionWindowController: NSWindowController {
         content.onLayerModeChanged = { [weak self] layerMode in
             self?.setLayerMode(layerMode)
         }
+        conversationController.onRunningStateChanged = { [weak self] isRunning in
+            self?.content.setLoopingAnimation(Self.animationState(forConversationRunning: isRunning))
+        }
 
         window.contentView = content
         refreshConversationThemeMenu()
@@ -83,7 +86,12 @@ final class CompanionWindowController: NSWindowController {
         content.setKeyboardAccessEnabled(isEnabled)
     }
 
+    static func animationState(forConversationRunning isRunning: Bool) -> CompanionAnimationState? {
+        isRunning ? .thinking : nil
+    }
+
     func closeCompanionWindow() {
+        content.setLoopingAnimation(nil)
         conversationController.closeBubble()
         window?.orderOut(nil)
     }

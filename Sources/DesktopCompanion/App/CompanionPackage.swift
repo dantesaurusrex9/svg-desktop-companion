@@ -38,6 +38,20 @@ enum CompanionAnimationPreset: String, Codable, CaseIterable {
     }
 }
 
+enum CompanionAnimationState: String, CaseIterable {
+    case typing
+    case thinking
+
+    var title: String {
+        switch self {
+        case .typing:
+            "Typing"
+        case .thinking:
+            "Thinking"
+        }
+    }
+}
+
 struct CompanionAnchor: Codable, Equatable {
     var x: CGFloat
     var y: CGFloat

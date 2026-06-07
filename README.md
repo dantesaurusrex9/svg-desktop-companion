@@ -43,7 +43,7 @@ Custom app bundles use `APP_NAME` as their Application Support folder by default
 - Click `Import Package` to install an existing package folder.
 - Hover over the companion to reveal the quit button.
 - Drag while hovering to move it.
-- Right-click and choose `Preview Animation` to preview the typing animation.
+- Use the library row preview buttons, or right-click and choose `Preview Animation`, to preview typing or thinking animations.
 - Right-click and choose `Conversate` to ask a general question through the local Codex CLI.
 - Right-click and choose `Bubble Theme` or `Reload Bubble Theme` to change the conversation bubble skin.
 - Right-click and choose `Layer` to switch between `Desktop`, `Floating`, and `Always On Top`.
@@ -52,7 +52,7 @@ Custom app bundles use `APP_NAME` as their Application Support folder by default
 
 ## Conversate
 
-The companion can open a speech bubble and send general questions to the local `codex` CLI. It runs `codex exec` in an isolated app-support folder with a read-only sandbox, so it is intended for casual answers rather than editing this repository.
+The companion can open a speech bubble and send general questions to the local `codex` CLI. It plays the thinking animation while the request is running. It runs `codex exec` in an isolated app-support folder with a read-only sandbox, so it is intended for casual answers rather than editing this repository.
 
 The app looks for `codex` at `~/.local/bin/codex`, `/opt/homebrew/bin/codex`, `/usr/local/bin/codex`, and then the app process `PATH`.
 
@@ -171,7 +171,7 @@ Minimal `companion.json`:
 
 Package IDs must use lowercase letters, numbers, and hyphens. Add `"conversationThemesDirectory": "ConversationThemes"` when the package includes bubble themes. Install package folders under `~/Library/Application Support/<support-dir>/Companions/`, use `Import Package` in the library window, or pass one to `make app COMPANION_PACKAGE=/path/to/package` to embed it in the app bundle.
 
-Supported `bubblePlacement` values are `automatic`, `above`, `right`, and `left`. Supported `animationPreset` values are `idleOnly`, `wholeObjectReaction`, and `legoSmash`.
+Supported `bubblePlacement` values are `automatic`, `above`, `right`, and `left`. Supported `animationPreset` values are `idleOnly`, `wholeObjectReaction`, and `legoSmash`. Each active preset supports shared animation states for typing and thinking; `idleOnly` disables both.
 
 ## Typing Detection
 

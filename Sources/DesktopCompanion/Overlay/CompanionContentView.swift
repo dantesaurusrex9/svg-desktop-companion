@@ -110,9 +110,18 @@ final class CompanionContentView: NSView {
 
     override func menu(for event: NSEvent) -> NSMenu? {
         let menu = NSMenu()
-        let testItem = NSMenuItem(title: "Preview Animation", action: #selector(previewAnimationRequested), keyEquivalent: "b")
-        testItem.target = self
-        menu.addItem(testItem)
+        let previewItem = NSMenuItem(title: "Preview Animation", action: nil, keyEquivalent: "")
+        let previewMenu = NSMenu()
+        let supportedStates = svgView.supportedAnimationStates
+        for state in CompanionAnimationState.allCases {
+            let stateItem = NSMenuItem(title: state.title, action: #selector(previewAnimationRequested(_:)), keyEquivalent: "")
+            stateItem.target = self
+            stateItem.representedObject = state.rawValue
+            stateItem.isEnabled = supportedStates.contains(state)
+            previewMenu.addItem(stateItem)
+        }
+        previewItem.submenu = previewMenu
+        menu.addItem(previewItem)
 
         let reloadItem = NSMenuItem(title: "Reload SVG", action: #selector(reloadRequested), keyEquivalent: "r")
         reloadItem.target = self
@@ -159,7 +168,11 @@ final class CompanionContentView: NSView {
     }
 
     func playTypingReaction() {
-        svgView.playTypingReaction()
+        svgView.playAnimation(.typing)
+    }
+
+    func setLoopingAnimation(_ state: CompanionAnimationState?) {
+        svgView.setLoopingAnimation(state)
     }
 
     func reloadSVG() {
@@ -267,8 +280,13 @@ final class CompanionContentView: NSView {
         onConversationThemeSelected?(themeID)
     }
 
-    @objc private func previewAnimationRequested() {
-        playTypingReaction()
+    @objc private func previewAnimationRequested(_ sender: NSMenuItem) {
+        guard let rawValue = sender.representedObject as? String,
+              let state = CompanionAnimationState(rawValue: rawValue) else {
+            return
+        }
+
+        svgView.playAnimation(state)
     }
 
     @objc private func layerModeRequested(_ sender: NSMenuItem) {

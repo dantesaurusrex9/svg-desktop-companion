@@ -139,9 +139,11 @@ final class CompanionLibraryWindowController: NSWindowController {
 private final class CompanionPackageRowView: RoundedPanelView {
     var onSpawn: ((CompanionPackage) -> Void)?
     private let package: CompanionPackage
+    private let previewView: SVGCompanionView
 
     init(package: CompanionPackage, activeCount: Int) {
         self.package = package
+        self.previewView = SVGCompanionView(package: package, animationPreset: package.animationPreset)
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
         setup(activeCount: activeCount)
@@ -165,18 +167,45 @@ private final class CompanionPackageRowView: RoundedPanelView {
         textStack.addArrangedSubview(nameLabel)
         textStack.addArrangedSubview(detailLabel)
 
+        let previewStack = NSStackView()
+        previewStack.orientation = .horizontal
+        previewStack.alignment = .centerY
+        previewStack.spacing = 6
+        previewStack.translatesAutoresizingMaskIntoConstraints = false
+
+        let supportedStates = previewView.supportedAnimationStates
+        for state in CompanionAnimationState.allCases {
+            let button = AppTheme.button(state.title, target: self, action: #selector(previewRequested(_:)))
+            button.identifier = NSUserInterfaceItemIdentifier(state.rawValue)
+            button.isEnabled = supportedStates.contains(state)
+            button.translatesAutoresizingMaskIntoConstraints = false
+            button.widthAnchor.constraint(equalToConstant: 78).isActive = true
+            previewStack.addArrangedSubview(button)
+        }
+
         let spawnButton = AppTheme.button("Spawn", target: self, action: #selector(spawnRequested))
         spawnButton.translatesAutoresizingMaskIntoConstraints = false
+        previewView.translatesAutoresizingMaskIntoConstraints = false
 
+        addSubview(previewView)
         addSubview(textStack)
+        addSubview(previewStack)
         addSubview(spawnButton)
 
         NSLayoutConstraint.activate([
-            heightAnchor.constraint(greaterThanOrEqualToConstant: 68),
+            heightAnchor.constraint(greaterThanOrEqualToConstant: 86),
 
-            textStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
+            previewView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
+            previewView.centerYAnchor.constraint(equalTo: centerYAnchor),
+            previewView.widthAnchor.constraint(equalToConstant: 58),
+            previewView.heightAnchor.constraint(equalToConstant: 58),
+
+            textStack.leadingAnchor.constraint(equalTo: previewView.trailingAnchor, constant: 14),
             textStack.centerYAnchor.constraint(equalTo: centerYAnchor),
-            textStack.trailingAnchor.constraint(lessThanOrEqualTo: spawnButton.leadingAnchor, constant: -16),
+            textStack.trailingAnchor.constraint(lessThanOrEqualTo: previewStack.leadingAnchor, constant: -16),
+
+            previewStack.trailingAnchor.constraint(equalTo: spawnButton.leadingAnchor, constant: -10),
+            previewStack.centerYAnchor.constraint(equalTo: centerYAnchor),
 
             spawnButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
             spawnButton.centerYAnchor.constraint(equalTo: centerYAnchor),
@@ -203,5 +232,14 @@ private final class CompanionPackageRowView: RoundedPanelView {
 
     @objc private func spawnRequested() {
         onSpawn?(package)
+    }
+
+    @objc private func previewRequested(_ sender: NSButton) {
+        guard let rawValue = sender.identifier?.rawValue,
+              let state = CompanionAnimationState(rawValue: rawValue) else {
+            return
+        }
+
+        previewView.playAnimation(state)
     }
 }
