@@ -29,6 +29,10 @@ struct CodexConversationCommandTests {
         let menu = view.menu(for: event)
 
         #expect(menu?.items.contains { $0.title == "Preview Animation" } == true)
+        #expect(
+            menu?.items.first(where: { $0.title == "Preview Animation" })?.submenu?.items.map(\.title) ==
+                CompanionAnimationState.allCases.map(\.title)
+        )
         #expect(menu?.items.contains { $0.title == "Test Bash" } == false)
         #expect(menu?.items.contains { $0.title == "Conversate" } == true)
         #expect(menu?.items.contains { $0.title == "Reload Overlay Theme" } == true)
@@ -132,6 +136,125 @@ struct CodexConversationCommandTests {
         )
 
         #expect(origin == NSPoint(x: 65, y: 68))
+    }
+
+    @Test
+    func testAnimationStatesAreSharedAcrossActivePresets() {
+        #expect(CompanionAnimationClip.states(for: .wholeObjectReaction) == CompanionAnimationState.allCases)
+        #expect(CompanionAnimationClip.states(for: .legoSmash) == CompanionAnimationState.allCases)
+        #expect(CompanionAnimationClip.states(for: .idleOnly).isEmpty)
+    }
+
+    @MainActor
+    @Test
+    func testAnimationClipsBuildTypingAndThinkingStates() throws {
+        let markup = #"<svg viewBox="0 0 220 220" xmlns="http://www.w3.org/2000/svg"><g class="lego-smash-arm"></g></svg>"#
+        let renderer: (String) -> NSImage = { _ in NSImage(size: NSSize(width: 2, height: 2)) }
+
+        let typing = try #require(CompanionAnimationClip.clip(
+            markup: markup,
+            preset: .legoSmash,
+            state: .typing,
+            renderer: renderer
+        ))
+        let thinking = try #require(CompanionAnimationClip.clip(
+            markup: markup,
+            preset: .legoSmash,
+            state: .thinking,
+            renderer: renderer
+        ))
+
+        #expect(typing.frames.count == 3)
+        #expect(typing.duration == 0.30)
+        #expect(thinking.frames.count == 1)
+        #expect(thinking.duration == 1.25)
+    }
+
+    @MainActor
+    @Test
+    func testIdleOnlyDoesNotBuildAnimationClips() {
+        let renderer: (String) -> NSImage = { _ in NSImage(size: NSSize(width: 2, height: 2)) }
+
+        let clip = CompanionAnimationClip.clip(
+            markup: #"<svg viewBox="0 0 220 220" xmlns="http://www.w3.org/2000/svg"></svg>"#,
+            preset: .idleOnly,
+            state: .typing,
+            renderer: renderer
+        )
+        if clip != nil {
+            Issue.record("Idle-only preset should not build animation clips")
+        }
+    }
+
+    @MainActor
+    @Test
+    func testIdleOnlyContextMenuDisablesUnsupportedAnimationStates() {
+        guard let event = NSEvent.mouseEvent(
+            with: .rightMouseDown,
+            location: .zero,
+            modifierFlags: [],
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            eventNumber: 0,
+            clickCount: 1,
+            pressure: 0
+        ) else {
+            Issue.record("Could not create right-click event")
+            return
+        }
+
+        let view = CompanionContentView(
+            frame: NSRect(origin: .zero, size: CompanionWindowMetrics.size),
+            package: nil,
+            animationPreset: .idleOnly
+        )
+        let previewItems = view.menu(for: event)?
+            .items
+            .first(where: { $0.title == "Preview Animation" })?
+            .submenu?
+            .items ?? []
+
+        #expect(previewItems.count == CompanionAnimationState.allCases.count)
+        #expect(previewItems.allSatisfy { !$0.isEnabled })
+    }
+
+    @MainActor
+    @Test
+    func testConversationRunningStateMapsToThinkingAnimation() {
+        #expect(CompanionWindowController.animationState(forConversationRunning: true) == .thinking)
+        #expect(CompanionWindowController.animationState(forConversationRunning: false) == nil)
+    }
+
+    @MainActor
+    @Test
+    func testConversationRunningStateNotifiesOnSuccess() throws {
+        let submitted = try submittedConversationController()
+
+        #expect(submitted.recorder.values == [true])
+        submitted.runner.complete(.success("Done"))
+        #expect(submitted.recorder.values == [true, false])
+    }
+
+    @MainActor
+    @Test
+    func testConversationRunningStateNotifiesOnFailure() throws {
+        let submitted = try submittedConversationController()
+
+        #expect(submitted.recorder.values == [true])
+        submitted.runner.complete(.failure(.missingResponse))
+        #expect(submitted.recorder.values == [true, false])
+    }
+
+    @MainActor
+    @Test
+    func testConversationRunningStateNotifiesOnCancel() throws {
+        let submitted = try submittedConversationController()
+
+        #expect(submitted.recorder.values == [true])
+        submitted.controller.closeBubble()
+        #expect(submitted.runner.didCancel)
+        #expect(submitted.recorder.values == [true, false])
     }
 
     @MainActor
@@ -1461,4 +1584,75 @@ struct CodexConversationCommandTests {
             color.alphaComponent
         ]
     }
+}
+
+@MainActor
+private func submittedConversationController() throws -> (
+    controller: ConversationBubbleWindowController,
+    runner: FakeCodexConversationRunner,
+    recorder: RunningStateRecorder
+) {
+    let runner = FakeCodexConversationRunner()
+    let recorder = RunningStateRecorder()
+    let controller = ConversationBubbleWindowController(runner: runner)
+    controller.onRunningStateChanged = { recorder.values.append($0) }
+
+    let inputField = try #require(firstEditableTextField(in: controller.window?.contentView))
+    inputField.stringValue = "What is Go?"
+    guard let action = inputField.action else {
+        Issue.record("Conversation input did not have a submit action")
+        return (controller, runner, recorder)
+    }
+
+    #expect(NSApp.sendAction(action, to: inputField.target, from: inputField))
+    return (controller, runner, recorder)
+}
+
+@MainActor
+private func firstEditableTextField(in view: NSView?) -> NSTextField? {
+    guard let view else {
+        return nil
+    }
+
+    if let textField = view as? NSTextField,
+       textField.isEditable {
+        return textField
+    }
+
+    for subview in view.subviews {
+        if let textField = firstEditableTextField(in: subview) {
+            return textField
+        }
+    }
+
+    return nil
+}
+
+@MainActor
+private final class FakeCodexConversationRunner: CodexConversationRunning {
+    private var completion: ((Result<String, CodexConversationError>) -> Void)?
+    private(set) var didCancel = false
+
+    func run(
+        question: String,
+        history: [CodexConversationTurn],
+        streamUpdate: ((String) -> Void)?,
+        completion: @escaping (Result<String, CodexConversationError>) -> Void
+    ) {
+        self.completion = completion
+    }
+
+    func cancel() {
+        didCancel = true
+    }
+
+    func complete(_ result: Result<String, CodexConversationError>) {
+        let completion = completion
+        self.completion = nil
+        completion?(result)
+    }
+}
+
+private final class RunningStateRecorder {
+    var values: [Bool] = []
 }

@@ -2,7 +2,7 @@ import AppKit
 import QuartzCore
 
 final class ConversationBubbleWindowController: NSWindowController, NSWindowDelegate {
-    private let runner: CodexConversationRunner
+    private let runner: CodexConversationRunning
     private let rootView = NSView()
     private let hoverView = NSView()
     private let connectorView = ConversationConnectorView()
@@ -36,13 +36,14 @@ final class ConversationBubbleWindowController: NSWindowController, NSWindowDele
     private let hoverAnimationKey = "desktopCompanionConversationHover"
     var onBodySizeChanged: ((NSSize) -> Void)?
     var onBodyOffsetChanged: ((NSPoint?) -> Void)?
+    var onRunningStateChanged: ((Bool) -> Void)?
 
     init(
         package: CompanionPackage? = CompanionPackageLoader.selectedPackage(),
         bubblePlacement: CompanionBubblePlacement = .automatic,
         preferredBodySize: NSSize? = nil,
         bodyOffset: NSPoint? = nil,
-        runner: CodexConversationRunner = CodexConversationRunner()
+        runner: CodexConversationRunning = CodexConversationRunner()
     ) {
         self.package = package
         self.bubblePlacement = bubblePlacement
@@ -107,6 +108,7 @@ final class ConversationBubbleWindowController: NSWindowController, NSWindowDele
 
     func closeBubble() {
         runner.cancel()
+        setRunning(false)
         stopHoverAnimation()
         window?.orderOut(nil)
     }
@@ -152,6 +154,7 @@ final class ConversationBubbleWindowController: NSWindowController, NSWindowDele
 
     func windowWillClose(_ notification: Notification) {
         runner.cancel()
+        setRunning(false)
         stopHoverAnimation()
     }
 
@@ -352,7 +355,7 @@ final class ConversationBubbleWindowController: NSWindowController, NSWindowDele
 
         pendingQuestion = question
         streamingAnswer = nil
-        isRunning = true
+        setRunning(true)
         inputField.stringValue = ""
         inputField.isEnabled = false
         renderTranscript(status: "Thinking...")
@@ -369,7 +372,7 @@ final class ConversationBubbleWindowController: NSWindowController, NSWindowDele
                 return
             }
 
-            self.isRunning = false
+            self.setRunning(false)
             self.inputField.isEnabled = true
             self.inputField.becomeFirstResponder()
 
@@ -386,6 +389,15 @@ final class ConversationBubbleWindowController: NSWindowController, NSWindowDele
                 self.renderTranscript(status: error.userMessage)
             }
         }
+    }
+
+    private func setRunning(_ isRunning: Bool) {
+        guard self.isRunning != isRunning else {
+            return
+        }
+
+        self.isRunning = isRunning
+        onRunningStateChanged?(isRunning)
     }
 
     @objc private func closeRequested() {

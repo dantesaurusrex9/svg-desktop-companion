@@ -283,9 +283,11 @@ private final class FlippedDocumentView: NSView {
 private final class CompanionPackageCardView: RoundedPanelView {
     var onSpawn: ((CompanionPackage) -> Void)?
     private let package: CompanionPackage
+    private let previewView: SVGCompanionView
 
     init(package: CompanionPackage, activeCount: Int) {
         self.package = package
+        self.previewView = SVGCompanionView(package: package, animationPreset: package.animationPreset)
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
         setup(activeCount: activeCount)
@@ -301,7 +303,7 @@ private final class CompanionPackageCardView: RoundedPanelView {
         let nameLabel = AppTheme.label(package.displayName, font: AppTypography.cardTitle)
         let detailLabel = AppTheme.label(detailText, font: AppTypography.cardDetail, color: AppTheme.secondaryText)
         let activeBadge = badge(text: activeText(count: activeCount))
-        let previewView = makePreviewView()
+        let previewView = self.previewView
 
         let textStack = NSStackView()
         textStack.orientation = .vertical
@@ -311,10 +313,27 @@ private final class CompanionPackageCardView: RoundedPanelView {
         textStack.addArrangedSubview(nameLabel)
         textStack.addArrangedSubview(detailLabel)
 
+        let previewStack = NSStackView()
+        previewStack.orientation = .horizontal
+        previewStack.alignment = .centerY
+        previewStack.spacing = 6
+        previewStack.translatesAutoresizingMaskIntoConstraints = false
+
+        let supportedStates = previewView.supportedAnimationStates
+        for state in CompanionAnimationState.allCases {
+            let button = AppTheme.button(state.title, target: self, action: #selector(previewRequested(_:)))
+            button.identifier = NSUserInterfaceItemIdentifier(state.rawValue)
+            button.isEnabled = supportedStates.contains(state)
+            button.translatesAutoresizingMaskIntoConstraints = false
+            button.widthAnchor.constraint(equalToConstant: 78).isActive = true
+            previewStack.addArrangedSubview(button)
+        }
+
         let spawnButton = AppTheme.primaryButton(AppCopy.spawnAction, target: self, action: #selector(spawnRequested))
         spawnButton.translatesAutoresizingMaskIntoConstraints = false
+        previewView.translatesAutoresizingMaskIntoConstraints = false
 
-        let actionStack = NSStackView(views: [activeBadge, spawnButton])
+        let actionStack = NSStackView(views: [activeBadge, previewStack, spawnButton])
         actionStack.orientation = .vertical
         actionStack.alignment = .trailing
         actionStack.spacing = AppLayout.actionStackSpacing
@@ -375,12 +394,6 @@ private final class CompanionPackageCardView: RoundedPanelView {
         return badge
     }
 
-    private func makePreviewView() -> NSView {
-        let previewView = SVGCompanionView(package: package, animationPreset: .idleOnly, animateIdle: true)
-        previewView.translatesAutoresizingMaskIntoConstraints = false
-        return previewView
-    }
-
     private var sourceText: String {
         if package.id == CompanionPackageLoader.legacyUserPackageID {
             return "Legacy Override"
@@ -395,5 +408,14 @@ private final class CompanionPackageCardView: RoundedPanelView {
 
     @objc private func spawnRequested() {
         onSpawn?(package)
+    }
+
+    @objc private func previewRequested(_ sender: NSButton) {
+        guard let rawValue = sender.identifier?.rawValue,
+              let state = CompanionAnimationState(rawValue: rawValue) else {
+            return
+        }
+
+        previewView.playAnimation(state)
     }
 }
