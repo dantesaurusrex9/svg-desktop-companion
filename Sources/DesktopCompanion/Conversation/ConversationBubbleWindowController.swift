@@ -5,9 +5,7 @@ final class ConversationBubbleWindowController: NSWindowController, NSWindowDele
     private let runner: CodexConversationRunning
     private let rootView = NSView()
     private let hoverView = NSView()
-    private let connectorView = ConversationConnectorView()
     private let bubbleView = ConversationBubbleBodyView()
-    private let backgroundImageView = ConversationBubbleBackgroundImageView()
     private let scrollView = NSScrollView()
     private let transcriptView = ConversationTranscriptView()
     private let inputContainerView = NSView()
@@ -193,8 +191,6 @@ final class ConversationBubbleWindowController: NSWindowController, NSWindowDele
 
         hoverView.translatesAutoresizingMaskIntoConstraints = false
         bubbleView.translatesAutoresizingMaskIntoConstraints = false
-        connectorView.translatesAutoresizingMaskIntoConstraints = false
-        backgroundImageView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         transcriptView.translatesAutoresizingMaskIntoConstraints = true
         inputContainerView.translatesAutoresizingMaskIntoConstraints = false
@@ -213,14 +209,6 @@ final class ConversationBubbleWindowController: NSWindowController, NSWindowDele
         bubbleView.layer?.borderWidth = 0
         bubbleView.layer?.cornerRadius = 0
         bubbleView.layer?.masksToBounds = true
-        connectorView.wantsLayer = true
-        connectorView.layer?.backgroundColor = NSColor.clear.cgColor
-        connectorView.isHidden = true
-
-        backgroundImageView.imageScaling = .scaleAxesIndependently
-        backgroundImageView.imageAlignment = .alignCenter
-        backgroundImageView.isHidden = true
-
         transcriptView.items = ConversationTranscriptViewModel(
             history: [],
             pendingQuestion: nil,
@@ -297,8 +285,6 @@ final class ConversationBubbleWindowController: NSWindowController, NSWindowDele
 
         rootView.addSubview(hoverView)
         hoverView.addSubview(bubbleView)
-        hoverView.addSubview(connectorView, positioned: .below, relativeTo: bubbleView)
-        bubbleView.addSubview(backgroundImageView)
         bubbleView.addSubview(scrollView)
         bubbleView.addSubview(inputContainerView)
         inputContainerView.addSubview(inputField)
@@ -312,16 +298,6 @@ final class ConversationBubbleWindowController: NSWindowController, NSWindowDele
             hoverView.trailingAnchor.constraint(equalTo: rootView.trailingAnchor),
             hoverView.topAnchor.constraint(equalTo: rootView.topAnchor),
             hoverView.bottomAnchor.constraint(equalTo: rootView.bottomAnchor),
-
-            connectorView.leadingAnchor.constraint(equalTo: hoverView.leadingAnchor),
-            connectorView.trailingAnchor.constraint(equalTo: hoverView.trailingAnchor),
-            connectorView.topAnchor.constraint(equalTo: hoverView.topAnchor),
-            connectorView.bottomAnchor.constraint(equalTo: hoverView.bottomAnchor),
-
-            backgroundImageView.leadingAnchor.constraint(equalTo: bubbleView.leadingAnchor),
-            backgroundImageView.trailingAnchor.constraint(equalTo: bubbleView.trailingAnchor),
-            backgroundImageView.topAnchor.constraint(equalTo: bubbleView.topAnchor),
-            backgroundImageView.bottomAnchor.constraint(equalTo: bubbleView.bottomAnchor),
 
             closeButton.topAnchor.constraint(equalTo: bubbleView.topAnchor, constant: 20),
             closeButton.trailingAnchor.constraint(equalTo: bubbleView.trailingAnchor, constant: -28),
@@ -431,7 +407,6 @@ final class ConversationBubbleWindowController: NSWindowController, NSWindowDele
     }
 
     private func applyTheme() {
-        backgroundImageView.image = nil
         applyLayout()
     }
 
@@ -464,9 +439,6 @@ final class ConversationBubbleWindowController: NSWindowController, NSWindowDele
         currentLayout = layout
         bodyOffset = normalizedOffset(layout.bodyOffset)
 
-        connectorView.connectorStart = layout.connectorStart
-        connectorView.connectorEnd = layout.connectorEnd
-        connectorView.needsDisplay = true
         scrollView.hasVerticalScroller = layout.isTranscriptScrollable
         inputContainerView.layer?.cornerRadius = layout.inputRect.height / 2
         transcriptView.frame = NSRect(
@@ -800,12 +772,6 @@ private final class ConversationBubbleBodyView: NSView {
         layer?.borderColor = NSColor.clear.cgColor
         layer?.borderWidth = 0
         layer?.masksToBounds = true
-    }
-}
-
-private final class ConversationBubbleBackgroundImageView: NSImageView {
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        nil
     }
 }
 
@@ -1169,63 +1135,5 @@ extension ConversationTranscriptItem {
                 .shadow: shadow
             ]
         )
-    }
-}
-
-private final class ConversationConnectorView: NSView {
-    var connectorStart: NSPoint = .zero
-    var connectorEnd: NSPoint = .zero
-    var fillColor: NSColor = ConversationTailStyle.defaultStyle.fillColor {
-        didSet {
-            needsDisplay = true
-        }
-    }
-    var strokeColor: NSColor = ConversationTailStyle.defaultStyle.strokeColor {
-        didSet {
-            needsDisplay = true
-        }
-    }
-
-    override var isFlipped: Bool {
-        true
-    }
-
-    override func draw(_ dirtyRect: NSRect) {
-        super.draw(dirtyRect)
-
-        let delta = NSPoint(
-            x: connectorEnd.x - connectorStart.x,
-            y: connectorEnd.y - connectorStart.y
-        )
-        let length = max(hypot(delta.x, delta.y), 1)
-        let halfWidth: CGFloat = 7
-        let normal = NSPoint(
-            x: -delta.y / length * halfWidth,
-            y: delta.x / length * halfWidth
-        )
-        let control = NSPoint(
-            x: connectorStart.x + delta.x * 0.58,
-            y: connectorStart.y + delta.y * 0.22
-        )
-
-        let path = NSBezierPath()
-        path.move(to: NSPoint(x: connectorStart.x + normal.x, y: connectorStart.y + normal.y))
-        path.curve(
-            to: connectorEnd,
-            controlPoint1: NSPoint(x: control.x + normal.x, y: control.y + normal.y),
-            controlPoint2: connectorEnd
-        )
-        path.curve(
-            to: NSPoint(x: connectorStart.x - normal.x, y: connectorStart.y - normal.y),
-            controlPoint1: connectorEnd,
-            controlPoint2: NSPoint(x: control.x - normal.x, y: control.y - normal.y)
-        )
-        path.close()
-
-        fillColor.withAlphaComponent(0.96).setFill()
-        path.fill()
-        strokeColor.withAlphaComponent(0.60).setStroke()
-        path.lineWidth = 1
-        path.stroke()
     }
 }

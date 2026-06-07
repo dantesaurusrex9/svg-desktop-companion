@@ -3,6 +3,7 @@ import Foundation
 enum CodexConversationError: Error, Equatable {
     case alreadyRunning
     case codexNotFound
+    case inputTooLong
     case launchFailed(String)
     case failed(Int32, String)
     case missingResponse
@@ -15,6 +16,8 @@ enum CodexConversationError: Error, Equatable {
             "Assistant is already thinking."
         case .codexNotFound:
             "Could not find the assistant CLI. Install it or make sure it is at ~/.local/bin/codex."
+        case .inputTooLong:
+            "That question is too long for the desktop overlay."
         case .launchFailed(let message):
             "Could not start assistant: \(message)"
         case .failed(_, let message):
@@ -74,6 +77,17 @@ final class CodexConversationRunner: CodexConversationRunning {
             return
         }
 
+        let prompt: String
+        do {
+            prompt = try CodexConversationCommand.validatedPrompt(question: question, history: history)
+        } catch CodexConversationError.inputTooLong {
+            completion(.failure(.inputTooLong))
+            return
+        } catch {
+            completion(.failure(.inputTooLong))
+            return
+        }
+
         guard let executablePath = locator.locate() else {
             AppLogger.conversation.error("Codex CLI executable not found")
             completion(.failure(.codexNotFound))
@@ -84,7 +98,6 @@ final class CodexConversationRunner: CodexConversationRunning {
             let workspaceURL = try conversationWorkspaceURL()
             let outputURL = fileManager.temporaryDirectory
                 .appendingPathComponent("desktop-companion-codex-\(UUID().uuidString).txt")
-            let prompt = CodexConversationCommand.prompt(question: question, history: history)
 
             let process = Process()
             process.executableURL = URL(fileURLWithPath: executablePath)
@@ -145,10 +158,11 @@ final class CodexConversationRunner: CodexConversationRunning {
                 }
             }
 
-            if let data = prompt.data(using: .utf8) {
-                inputPipe.fileHandleForWriting.write(data)
+            let promptData = Data(prompt.utf8)
+            DispatchQueue.global(qos: .userInitiated).async {
+                inputPipe.fileHandleForWriting.write(promptData)
+                inputPipe.fileHandleForWriting.closeFile()
             }
-            inputPipe.fileHandleForWriting.closeFile()
         } catch {
             self.process = nil
             self.completion = nil

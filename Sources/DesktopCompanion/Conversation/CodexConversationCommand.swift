@@ -6,6 +6,10 @@ struct CodexConversationTurn: Equatable {
 }
 
 enum CodexConversationCommand {
+    static let maxQuestionCharacterCount = 2_000
+    static let maxHistoryTurnCount = 8
+    static let maxPromptCharacterCount = 12_000
+
     static func arguments(workingDirectory: String, outputFile: String) -> [String] {
         [
             "exec",
@@ -18,6 +22,19 @@ enum CodexConversationCommand {
             "--json",
             "-"
         ]
+    }
+
+    static func validatedPrompt(question: String, history: [CodexConversationTurn]) throws -> String {
+        guard question.count <= maxQuestionCharacterCount else {
+            throw CodexConversationError.inputTooLong
+        }
+
+        let prompt = prompt(question: question, history: boundedHistory(history))
+        guard prompt.count <= maxPromptCharacterCount else {
+            throw CodexConversationError.inputTooLong
+        }
+
+        return prompt
     }
 
     static func prompt(question: String, history: [CodexConversationTurn]) -> String {
@@ -45,6 +62,10 @@ enum CodexConversationCommand {
         )
 
         return sections.joined(separator: "\n\n")
+    }
+
+    static func boundedHistory(_ history: [CodexConversationTurn]) -> [CodexConversationTurn] {
+        Array(history.suffix(maxHistoryTurnCount))
     }
 
     static func parsedResponse(from contents: String) -> String? {

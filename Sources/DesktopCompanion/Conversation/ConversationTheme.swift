@@ -7,50 +7,11 @@ struct ConversationTheme: Equatable {
     let folderURL: URL
     let bubbleSVGURL: URL
     let metrics: ConversationBubbleMetrics
-    let tailStyle: ConversationTailStyle
-
-    var bubbleImage: NSImage {
-        NSImage(contentsOf: bubbleSVGURL) ?? Self.defaultBubbleImage(size: defaultImageSize)
-    }
-
-    private var defaultImageSize: NSSize {
-        NSSize(width: metrics.width, height: metrics.minHeight)
-    }
-
-    private static func defaultBubbleImage(size: NSSize) -> NSImage {
-        let image = NSImage(size: size)
-        image.lockFocus()
-
-        let bodyRect = NSRect(x: 18, y: 30, width: max(size.width - 36, 1), height: max(size.height - 60, 1))
-        let bubble = NSBezierPath(roundedRect: bodyRect, xRadius: 30, yRadius: 30)
-
-        NSColor.white.withAlphaComponent(0.96).setFill()
-        bubble.fill()
-
-        NSColor.black.withAlphaComponent(0.12).setStroke()
-        bubble.lineWidth = 1
-        bubble.stroke()
-
-        image.unlockFocus()
-        return image
-    }
 }
 
-struct ConversationTailStyle: Equatable {
+enum ConversationTailStyle {
     static let defaultFill = "#FFFFFFF5"
     static let defaultStroke = "#0000001F"
-    static let defaultStyle = ConversationTailStyle(fill: defaultFill, stroke: defaultStroke)
-
-    let fill: String
-    let stroke: String
-
-    var fillColor: NSColor {
-        Self.color(from: fill) ?? NSColor.white.withAlphaComponent(0.96)
-    }
-
-    var strokeColor: NSColor {
-        Self.color(from: stroke) ?? NSColor.black.withAlphaComponent(0.12)
-    }
 
     static func isValid(_ value: String) -> Bool {
         color(from: value) != nil
@@ -100,6 +61,7 @@ struct ConversationThemeSummary: Equatable {
 enum ConversationThemeLoader {
     static let bundledThemeID = "cloud-default"
     static let selectedThemeDefaultsKey = "desktopCompanion.conversationThemeID"
+    private static let maxManifestByteCount: UInt64 = 64_000
 
     static var userThemesDirectory: URL? {
         DesktopCompanionPaths.applicationSupportDirectoryURL?
@@ -133,12 +95,6 @@ enum ConversationThemeLoader {
         userDefaults.set(themeID, forKey: selectedThemeDefaultsKey(package: package))
     }
 
-    static func availableThemeSummaries() -> [ConversationThemeSummary] {
-        availableThemes().map {
-            ConversationThemeSummary(id: $0.id, displayName: $0.displayName)
-        }
-    }
-
     static func availableThemeSummaries(package: CompanionPackage?) -> [ConversationThemeSummary] {
         availableThemes(package: package).map {
             ConversationThemeSummary(id: $0.id, displayName: $0.displayName)
@@ -159,7 +115,7 @@ enum ConversationThemeLoader {
 
     static func loadTheme(from folderURL: URL, fileManager: FileManager = .default) throws -> ConversationTheme {
         let manifestURL = folderURL.appendingPathComponent("theme.json", isDirectory: false)
-        let manifestData = try Data(contentsOf: manifestURL)
+        let manifestData = try dataIfSmall(from: manifestURL, maxBytes: maxManifestByteCount, fileManager: fileManager)
         let manifest = try JSONDecoder().decode(ConversationThemeManifest.self, from: manifestData)
 
         guard manifest.schemaVersion == 1,
@@ -178,10 +134,8 @@ enum ConversationThemeLoader {
 
         let insets = manifest.contentInsets.edgeInsets
         let tailAnchor = NSPoint(x: manifest.tailAnchor.x, y: manifest.tailAnchor.y)
-        let tailStyle = ConversationTailStyle(
-            fill: manifest.tailFillColor ?? ConversationTailStyle.defaultFill,
-            stroke: manifest.tailStrokeColor ?? ConversationTailStyle.defaultStroke
-        )
+        let tailFillColor = manifest.tailFillColor ?? ConversationTailStyle.defaultFill
+        let tailStrokeColor = manifest.tailStrokeColor ?? ConversationTailStyle.defaultStroke
         let metrics = ConversationBubbleMetrics(
             width: manifest.width,
             minHeight: manifest.minHeight,
@@ -203,8 +157,8 @@ enum ConversationThemeLoader {
               tailAnchor.y >= 0,
               tailAnchor.x <= manifest.width,
               tailAnchor.y <= manifest.minHeight,
-              ConversationTailStyle.isValid(tailStyle.fill),
-              ConversationTailStyle.isValid(tailStyle.stroke) else {
+              ConversationTailStyle.isValid(tailFillColor),
+              ConversationTailStyle.isValid(tailStrokeColor) else {
             throw ConversationThemeError.invalidGeometry
         }
 
@@ -213,8 +167,7 @@ enum ConversationThemeLoader {
             displayName: manifest.displayName,
             folderURL: folderURL,
             bubbleSVGURL: bubbleSVGURL,
-            metrics: metrics,
-            tailStyle: tailStyle
+            metrics: metrics
         )
     }
 
@@ -298,9 +251,18 @@ enum ConversationThemeLoader {
                 inputHeight: 38,
                 transcriptInputSpacing: 14,
                 tailAnchor: NSPoint(x: 88, y: 0)
-            ),
-            tailStyle: ConversationTailStyle(fill: "#FFFFFFFA", stroke: "#0000001A")
+            )
         )
+    }
+
+    private static func dataIfSmall(from url: URL, maxBytes: UInt64, fileManager: FileManager) throws -> Data {
+        do {
+            return try BoundedFileReader.data(from: url, maxBytes: maxBytes, fileManager: fileManager)
+        } catch BoundedFileReaderError.fileTooLarge {
+            throw ConversationThemeError.invalidManifest
+        } catch {
+            throw error
+        }
     }
 }
 

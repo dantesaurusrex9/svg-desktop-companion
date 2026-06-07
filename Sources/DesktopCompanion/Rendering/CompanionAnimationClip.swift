@@ -211,13 +211,16 @@ struct CompanionAnimationClip {
             }
 
             let originalTag = String(updatedMarkup[range])
-            let trimmedTag = String(originalTag.dropLast())
+            let isSelfClosing = originalTag.hasSuffix("/>")
+            let trimmedTag = String(originalTag.dropLast(isSelfClosing ? 2 : 1))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
             let cleanedTag = trimmedTag.replacingOccurrences(
                 of: attributePattern,
                 with: "",
                 options: .regularExpression
             )
-            updatedMarkup.replaceSubrange(range, with: #"\#(cleanedTag) \#(attributeName)="\#(value)">"#)
+            let closing = isSelfClosing ? "/>" : ">"
+            updatedMarkup.replaceSubrange(range, with: #"\#(cleanedTag) \#(attributeName)="\#(value)"\#(closing)"#)
         }
 
         return updatedMarkup

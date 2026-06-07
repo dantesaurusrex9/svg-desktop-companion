@@ -31,8 +31,6 @@ struct ConversationBubbleLayoutResult: Equatable {
     let transcriptRect: NSRect
     let inputRect: NSRect
     let frame: NSRect
-    let connectorStart: NSPoint
-    let connectorEnd: NSPoint
     let isTranscriptScrollable: Bool
 }
 
@@ -102,11 +100,6 @@ enum ConversationBubbleLayout {
             x: bodyFrame.minX - automaticBodyFrame.minX,
             y: bodyFrame.minY - automaticBodyFrame.minY
         )
-        let connectorStartScreenPoint = connectorStart(
-            bodyFrame: bodyFrame,
-            metrics: metrics,
-            mouthScreenPoint: mouthScreenPoint
-        )
         let frame = windowFrame(bodyFrame: bodyFrame)
         let bodyRect = NSRect(
             x: bodyFrame.minX - frame.minX,
@@ -134,14 +127,6 @@ enum ConversationBubbleLayout {
             transcriptRect: transcriptRect,
             inputRect: inputRect,
             frame: frame,
-            connectorStart: NSPoint(
-                x: connectorStartScreenPoint.x - frame.minX,
-                y: frame.maxY - connectorStartScreenPoint.y
-            ),
-            connectorEnd: NSPoint(
-                x: mouthScreenPoint.x - frame.minX,
-                y: frame.maxY - mouthScreenPoint.y
-            ),
             isTranscriptScrollable: desiredHeight > size.height
         )
     }
@@ -254,26 +239,6 @@ enum ConversationBubbleLayout {
             ),
             width: size.width,
             height: size.height
-        )
-    }
-
-    private static func connectorStart(
-        bodyFrame: NSRect,
-        metrics: ConversationBubbleMetrics,
-        mouthScreenPoint: NSPoint
-    ) -> NSPoint {
-        if mouthScreenPoint.x < bodyFrame.minX {
-            return NSPoint(x: bodyFrame.minX, y: clamped(mouthScreenPoint.y, min: bodyFrame.minY + 24, max: bodyFrame.maxY - 24))
-        }
-
-        if mouthScreenPoint.x > bodyFrame.maxX {
-            return NSPoint(x: bodyFrame.maxX, y: clamped(mouthScreenPoint.y, min: bodyFrame.minY + 24, max: bodyFrame.maxY - 24))
-        }
-
-        let tailAnchor = effectiveTailAnchor(metrics: metrics, size: bodyFrame.size)
-        return NSPoint(
-            x: bodyFrame.minX + tailAnchor.x,
-            y: bodyFrame.minY + tailAnchor.y
         )
     }
 

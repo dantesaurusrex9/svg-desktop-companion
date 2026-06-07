@@ -230,6 +230,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             do {
                 _ = try CompanionPackageInstaller.installPackageFolder(sourceFolderURL: sourceURL)
                 self?.refreshLibrary()
+            } catch CompanionPackageError.packageAlreadyInstalled {
+                self?.showError("Package already installed. Rename the package ID before importing.")
             } catch {
                 self?.showError("Could not import package.")
             }
