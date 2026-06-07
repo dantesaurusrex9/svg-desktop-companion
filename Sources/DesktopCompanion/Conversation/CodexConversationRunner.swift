@@ -35,6 +35,10 @@ final class CodexConversationRunner {
     private let fileManager: FileManager
     private var process: Process?
     private var completion: ((Result<String, CodexConversationError>) -> Void)?
+    private var streamUpdate: ((String) -> Void)?
+    private var streamParser = CodexConversationStreamParser()
+    private var latestStreamText = ""
+    private var outputReadHandle: FileHandle?
     private var timeoutTimer: Timer?
     private var didCancel = false
     private var didTimeOut = false
@@ -51,6 +55,7 @@ final class CodexConversationRunner {
     func run(
         question: String,
         history: [CodexConversationTurn],
+        streamUpdate: ((String) -> Void)? = nil,
         completion: @escaping (Result<String, CodexConversationError>) -> Void
     ) {
         guard process == nil else {
@@ -79,10 +84,11 @@ final class CodexConversationRunner {
             process.currentDirectoryURL = workspaceURL
 
             let inputPipe = Pipe()
+            let outputPipe = Pipe()
             let errorPipe = Pipe()
             process.standardInput = inputPipe
             process.standardError = errorPipe
-            process.standardOutput = FileHandle(forWritingAtPath: "/dev/null")
+            process.standardOutput = outputPipe
 
             let startedAt = Date()
             process.terminationHandler = { [weak self] terminatedProcess in
@@ -105,8 +111,22 @@ final class CodexConversationRunner {
 
             self.process = process
             self.completion = completion
+            self.streamUpdate = streamUpdate
+            streamParser = CodexConversationStreamParser()
+            latestStreamText = ""
+            outputReadHandle = outputPipe.fileHandleForReading
             didCancel = false
             didTimeOut = false
+            outputPipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
+                let data = handle.availableData
+                guard !data.isEmpty else {
+                    return
+                }
+
+                Task { @MainActor [weak self] in
+                    self?.consumeStreamData(data)
+                }
+            }
             try process.run()
             timeoutTimer = Timer.scheduledTimer(withTimeInterval: timeout, repeats: false) { [weak self] _ in
                 Task { @MainActor [weak self] in
@@ -121,6 +141,9 @@ final class CodexConversationRunner {
         } catch {
             self.process = nil
             self.completion = nil
+            self.streamUpdate = nil
+            outputReadHandle?.readabilityHandler = nil
+            outputReadHandle = nil
             AppLogger.conversation.error("Codex launch failed: \(error.localizedDescription, privacy: .public)")
             completion(.failure(.launchFailed(error.localizedDescription)))
         }
@@ -130,6 +153,8 @@ final class CodexConversationRunner {
         didCancel = true
         timeoutTimer?.invalidate()
         timeoutTimer = nil
+        outputReadHandle?.readabilityHandler = nil
+        outputReadHandle = nil
         process?.terminate()
     }
 
@@ -145,9 +170,16 @@ final class CodexConversationRunner {
 
         timeoutTimer?.invalidate()
         timeoutTimer = nil
+        outputReadHandle?.readabilityHandler = nil
+        outputReadHandle = nil
+        if let streamedText = streamParser.finish(), !streamedText.isEmpty {
+            latestStreamText = streamedText
+            streamUpdate?(streamedText)
+        }
         process = nil
         let completion = completion
         self.completion = nil
+        streamUpdate = nil
 
         let durationMs = Int(Date().timeIntervalSince(startedAt) * 1000)
         if didCancel {
@@ -168,7 +200,9 @@ final class CodexConversationRunner {
             return
         }
 
-        guard let response = CodexConversationCommand.parsedResponse(from: outputText) else {
+        let responseText = CodexConversationCommand.parsedResponse(from: outputText)
+            ?? CodexConversationCommand.parsedResponse(from: latestStreamText)
+        guard let response = responseText else {
             AppLogger.conversation.error("Codex response file was empty duration_ms=\(durationMs)")
             completion?(.failure(.missingResponse))
             return
@@ -176,6 +210,17 @@ final class CodexConversationRunner {
 
         AppLogger.conversation.info("Codex request succeeded duration_ms=\(durationMs)")
         completion?(.success(response))
+    }
+
+    private func consumeStreamData(_ data: Data) {
+        guard process != nil, !didCancel, !didTimeOut else {
+            return
+        }
+
+        if let streamedText = streamParser.consume(data), !streamedText.isEmpty {
+            latestStreamText = streamedText
+            streamUpdate?(streamedText)
+        }
     }
 
     private func timeOutCurrentProcess() {

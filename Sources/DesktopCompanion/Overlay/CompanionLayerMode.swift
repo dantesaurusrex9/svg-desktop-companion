@@ -35,7 +35,7 @@ enum CompanionLayerModeStore {
     static func load() -> CompanionLayerMode {
         guard let rawValue = UserDefaults.standard.string(forKey: key),
               let layerMode = CompanionLayerMode(rawValue: rawValue) else {
-            return .desktop
+            return .alwaysOnTop
         }
 
         return layerMode

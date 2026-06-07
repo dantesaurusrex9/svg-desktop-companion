@@ -1,24 +1,24 @@
-<svg viewBox="0 0 520 300" role="img" aria-label="Cloud conversation bubble" xmlns="http://www.w3.org/2000/svg">
+<svg viewBox="0 0 500 260" role="img" aria-label="Cloud conversation bubble" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
-      <feDropShadow dx="0" dy="4" stdDeviation="5" flood-color="#000000" flood-opacity=".18"/>
+    <filter id="shadow" x="-10%" y="-12%" width="120%" height="132%">
+      <feDropShadow dx="0" dy="5" stdDeviation="4" flood-color="#000000" flood-opacity=".14"/>
     </filter>
     <linearGradient id="cloud-fill" x1="0" x2="1" y1="0" y2="1">
       <stop offset="0" stop-color="#FFFFFF"/>
-      <stop offset="1" stop-color="#F7F8FA"/>
+      <stop offset="1" stop-color="#F8F9FA"/>
     </linearGradient>
   </defs>
 
   <g filter="url(#shadow)">
-    <path d="M64 10
-             H450
-             C486 10 508 34 508 70
-             V230
-             C508 266 482 290 446 290
-             H70
-             C34 290 12 266 12 230
-             V70
-             C12 34 34 10 64 10Z"
-          fill="url(#cloud-fill)" stroke="#D9DCE1" stroke-width="1.5"/>
+    <path d="M58 8
+             H442
+             C472 8 490 28 490 58
+             V202
+             C490 232 470 252 440 252
+             H60
+             C30 252 10 232 10 202
+             V58
+             C10 28 28 8 58 8Z"
+          fill="url(#cloud-fill)" stroke="#D7DADE" stroke-width="1.25"/>
   </g>
 </svg>

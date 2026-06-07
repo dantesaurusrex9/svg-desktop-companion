@@ -31,9 +31,9 @@ struct CodexConversationCommandTests {
         #expect(menu?.items.contains { $0.title == "Preview Animation" } == true)
         #expect(menu?.items.contains { $0.title == "Test Bash" } == false)
         #expect(menu?.items.contains { $0.title == "Conversate" } == true)
-        #expect(menu?.items.contains { $0.title == "Reload Bubble Theme" } == true)
+        #expect(menu?.items.contains { $0.title == "Reload Overlay Theme" } == true)
         #expect(menu?.items.contains { $0.title == "Companion Package" } == false)
-        #expect(menu?.items.first(where: { $0.title == "Bubble Theme" })?.submenu?.items.count == 1)
+        #expect(menu?.items.first(where: { $0.title == "Overlay Theme" })?.submenu?.items.count == 1)
     }
 
     @MainActor
@@ -50,7 +50,7 @@ struct CodexConversationCommandTests {
 
     @MainActor
     @Test
-    func testConversationFrameAnchorsTailToMouthPoint() throws {
+    func testConversationFrameUsesTransparentTextBodyOnly() throws {
         let theme = try makeThemeFolder(
             manifest: """
             {
@@ -76,11 +76,12 @@ struct CodexConversationCommandTests {
             visibleFrame: NSRect(x: 0, y: 0, width: 1000, height: 800)
         )
 
-        #expect(frame.origin == NSPoint(x: 216, y: 182))
+        #expect(frame.origin == NSPoint(x: 216, y: 332))
+        #expect(frame.size == NSSize(width: 420, height: 133))
     }
 
     @Test
-    func testConversationLayoutUsesFixedHeightForShortContent() {
+    func testConversationLayoutFitsShortContentWithoutFixedBubbleHeight() {
         let layout = ConversationBubbleLayout.layout(
             metrics: testMetrics(),
             transcriptHeight: 24,
@@ -89,16 +90,31 @@ struct CodexConversationCommandTests {
             visibleFrame: NSRect(x: 0, y: 0, width: 1000, height: 800)
         )
 
-        #expect(layout.size == NSSize(width: 520, height: 300))
+        #expect(layout.size == NSSize(width: 520, height: 160))
         #expect(!layout.isTranscriptScrollable)
-        #expect(layout.inputRect.maxY == 270)
+        #expect(layout.inputRect.maxY == 130)
         #expect(layout.inputRect.minY == layout.transcriptRect.maxY + 16)
         #expect(bodyScreenRect(from: layout).minY == testCompanionFrame().maxY + ConversationBubbleLayout.bodyCompanionGap)
-        #expect(layout.connectorEnd == NSPoint(x: 94, y: 432))
+        #expect(layout.frame == bodyScreenRect(from: layout))
     }
 
     @Test
-    func testConversationLayoutKeepsFixedHeightForMediumContent() {
+    func testConversationLayoutReservesOverlayControlGutters() {
+        let layout = ConversationBubbleLayout.layout(
+            metrics: testMetrics(),
+            transcriptHeight: 80,
+            anchoredAt: NSPoint(x: 300, y: 200),
+            companionFrame: testCompanionFrame(),
+            visibleFrame: NSRect(x: 0, y: 0, width: 1000, height: 800)
+        )
+
+        #expect(layout.transcriptRect.minY - layout.bodyRect.minY >= ConversationBubbleLayout.controlTopGutter)
+        #expect(layout.bodyRect.maxX - layout.transcriptRect.maxX >= ConversationBubbleLayout.controlRightGutter)
+        #expect(layout.bodyRect.maxX - layout.inputRect.maxX >= ConversationBubbleLayout.controlRightGutter)
+    }
+
+    @Test
+    func testConversationLayoutExpandsForMediumContent() {
         let layout = ConversationBubbleLayout.layout(
             metrics: testMetrics(),
             transcriptHeight: 220,
@@ -107,13 +123,13 @@ struct CodexConversationCommandTests {
             visibleFrame: NSRect(x: 0, y: 0, width: 1000, height: 800)
         )
 
-        #expect(layout.size.height == 300)
-        #expect(layout.isTranscriptScrollable)
+        #expect(layout.size.height == 356)
+        #expect(!layout.isTranscriptScrollable)
         #expect(bodyScreenRect(from: layout).minY == testCompanionFrame().maxY + ConversationBubbleLayout.bodyCompanionGap)
     }
 
     @Test
-    func testConversationLayoutKeepsFixedHeightForLongContentAndScrolls() {
+    func testConversationLayoutCapsLongContentAndScrolls() {
         let layout = ConversationBubbleLayout.layout(
             metrics: testMetrics(),
             transcriptHeight: 900,
@@ -122,7 +138,7 @@ struct CodexConversationCommandTests {
             visibleFrame: NSRect(x: 0, y: 0, width: 1000, height: 800)
         )
 
-        #expect(layout.size.height == 300)
+        #expect(layout.size.height == 460)
         #expect(layout.isTranscriptScrollable)
         #expect(layout.frame.maxY <= 792)
     }
@@ -144,6 +160,200 @@ struct CodexConversationCommandTests {
     }
 
     @Test
+    func testConversationLayoutUsesPreferredBodySize() {
+        let layout = ConversationBubbleLayout.layout(
+            metrics: testMetrics(),
+            transcriptHeight: 180,
+            anchoredAt: NSPoint(x: 300, y: 200),
+            companionFrame: testCompanionFrame(),
+            visibleFrame: NSRect(x: 0, y: 0, width: 1000, height: 800),
+            preferredBodySize: NSSize(width: 640, height: 380)
+        )
+
+        #expect(layout.size == NSSize(width: 640, height: 380))
+        #expect(layout.transcriptRect.width == 542)
+        #expect(layout.inputRect.width == 542)
+        #expect(!layout.isTranscriptScrollable)
+    }
+
+    @Test
+    func testConversationLayoutClampsPreferredBodySizeToUsableBounds() {
+        let layout = ConversationBubbleLayout.layout(
+            metrics: testMetrics(),
+            transcriptHeight: 40,
+            anchoredAt: NSPoint(x: 300, y: 200),
+            companionFrame: testCompanionFrame(),
+            visibleFrame: NSRect(x: 0, y: 0, width: 1000, height: 800),
+            preferredBodySize: NSSize(width: 40, height: 40)
+        )
+
+        #expect(layout.size == NSSize(width: 258, height: 176))
+        #expect(layout.transcriptRect.width == 160)
+    }
+
+    @Test
+    func testConversationLayoutClampsLargePreferredBodySizeInsideSmallDisplay() {
+        let layout = ConversationBubbleLayout.layout(
+            metrics: testMetrics(),
+            transcriptHeight: 900,
+            anchoredAt: NSPoint(x: 300, y: 380),
+            companionFrame: testCompanionFrame(),
+            visibleFrame: NSRect(x: 0, y: 0, width: 320, height: 400),
+            preferredBodySize: NSSize(width: 900, height: 900)
+        )
+
+        #expect(layout.size == NSSize(width: 304, height: 384))
+        #expect(layout.frame.maxX <= 320)
+        #expect(layout.frame.maxY <= 400)
+        #expect(layout.isTranscriptScrollable)
+    }
+
+    @Test
+    func testConversationLayoutKeepsWindowFrameEqualToTransparentTextBody() {
+        let layout = ConversationBubbleLayout.layout(
+            metrics: testMetrics(),
+            transcriptHeight: 40,
+            anchoredAt: NSPoint(x: 130, y: 200),
+            companionFrame: NSRect(x: 100, y: 100, width: 80, height: 80),
+            visibleFrame: NSRect(x: 0, y: 0, width: 1000, height: 800),
+            placement: .right,
+            preferredBodySize: NSSize(width: 360, height: 320)
+        )
+
+        #expect(layout.size == NSSize(width: 360, height: 320))
+        #expect(bodyScreenRect(from: layout).size == layout.size)
+        #expect(layout.frame.size == layout.bodyRect.size)
+    }
+
+    @Test
+    func testConversationLayoutAppliesBodyOffsetFromAutomaticPosition() {
+        let baseLayout = ConversationBubbleLayout.layout(
+            metrics: testMetrics(),
+            transcriptHeight: 40,
+            anchoredAt: NSPoint(x: 300, y: 200),
+            companionFrame: testCompanionFrame(),
+            visibleFrame: NSRect(x: 0, y: 0, width: 1000, height: 800)
+        )
+        let offsetLayout = ConversationBubbleLayout.layout(
+            metrics: testMetrics(),
+            transcriptHeight: 40,
+            anchoredAt: NSPoint(x: 300, y: 200),
+            companionFrame: testCompanionFrame(),
+            visibleFrame: NSRect(x: 0, y: 0, width: 1000, height: 800),
+            bodyOffset: NSPoint(x: 40, y: -25)
+        )
+        let baseBody = bodyScreenRect(from: baseLayout)
+        let offsetBody = bodyScreenRect(from: offsetLayout)
+
+        #expect(offsetLayout.bodyOffset == NSPoint(x: 40, y: -25))
+        #expect(offsetBody.origin == NSPoint(x: baseBody.minX + 40, y: baseBody.minY - 25))
+        #expect(offsetLayout.connectorEnd.x >= 0)
+        #expect(offsetLayout.connectorEnd.y >= 0)
+    }
+
+    @Test
+    func testConversationLayoutClampsBodyOffsetInsideDisplay() {
+        let layout = ConversationBubbleLayout.layout(
+            metrics: testMetrics(),
+            transcriptHeight: 40,
+            anchoredAt: NSPoint(x: 300, y: 200),
+            companionFrame: testCompanionFrame(),
+            visibleFrame: NSRect(x: 0, y: 0, width: 1000, height: 800),
+            bodyOffset: NSPoint(x: 900, y: 900)
+        )
+        let body = bodyScreenRect(from: layout)
+
+        #expect(body.maxX <= 992)
+        #expect(body.maxY <= 792)
+        #expect(layout.bodyOffset.x < 900)
+        #expect(layout.bodyOffset.y < 900)
+    }
+
+    @Test
+    func testBottomRightResizeOffsetKeepsTopLeftCornerForLeftPlacement() {
+        let startLayout = ConversationBubbleLayout.layout(
+            metrics: testMetrics(),
+            transcriptHeight: 40,
+            anchoredAt: NSPoint(x: 430, y: 300),
+            companionFrame: NSRect(x: 400, y: 220, width: 80, height: 80),
+            visibleFrame: NSRect(x: 0, y: 0, width: 1000, height: 800),
+            placement: .left
+        )
+        let startBody = bodyScreenRect(from: startLayout)
+        let automaticResizedLayout = ConversationBubbleLayout.layout(
+            metrics: testMetrics(),
+            transcriptHeight: 40,
+            anchoredAt: NSPoint(x: 430, y: 300),
+            companionFrame: NSRect(x: 400, y: 220, width: 80, height: 80),
+            visibleFrame: NSRect(x: 0, y: 0, width: 1000, height: 800),
+            placement: .left,
+            preferredBodySize: NSSize(width: startLayout.size.width + 80, height: startLayout.size.height + 50)
+        )
+        let offset = ConversationBubbleWindowController.bodyOffsetForBottomRightResize(
+            startBodyFrame: startBody,
+            automaticBodyFrame: bodyScreenRect(from: automaticResizedLayout)
+        )
+        let resizedLayout = ConversationBubbleLayout.layout(
+            metrics: testMetrics(),
+            transcriptHeight: 40,
+            anchoredAt: NSPoint(x: 430, y: 300),
+            companionFrame: NSRect(x: 400, y: 220, width: 80, height: 80),
+            visibleFrame: NSRect(x: 0, y: 0, width: 1000, height: 800),
+            placement: .left,
+            preferredBodySize: NSSize(width: startLayout.size.width + 80, height: startLayout.size.height + 50),
+            bodyOffset: offset
+        )
+        let resizedBody = bodyScreenRect(from: resizedLayout)
+
+        #expect(resizedBody.minX == startBody.minX)
+        #expect(resizedBody.maxY == startBody.maxY)
+        #expect(resizedBody.width == startBody.width + 80)
+        #expect(resizedBody.height == startBody.height + 50)
+    }
+
+    @Test
+    func testBottomRightResizeOffsetKeepsTopLeftCornerForAbovePlacement() {
+        let startLayout = ConversationBubbleLayout.layout(
+            metrics: testMetrics(),
+            transcriptHeight: 40,
+            anchoredAt: NSPoint(x: 300, y: 200),
+            companionFrame: testCompanionFrame(),
+            visibleFrame: NSRect(x: 0, y: 0, width: 1000, height: 800),
+            placement: .above
+        )
+        let startBody = bodyScreenRect(from: startLayout)
+        let automaticResizedLayout = ConversationBubbleLayout.layout(
+            metrics: testMetrics(),
+            transcriptHeight: 40,
+            anchoredAt: NSPoint(x: 300, y: 200),
+            companionFrame: testCompanionFrame(),
+            visibleFrame: NSRect(x: 0, y: 0, width: 1000, height: 800),
+            placement: .above,
+            preferredBodySize: NSSize(width: startLayout.size.width + 70, height: startLayout.size.height + 40)
+        )
+        let offset = ConversationBubbleWindowController.bodyOffsetForBottomRightResize(
+            startBodyFrame: startBody,
+            automaticBodyFrame: bodyScreenRect(from: automaticResizedLayout)
+        )
+        let resizedLayout = ConversationBubbleLayout.layout(
+            metrics: testMetrics(),
+            transcriptHeight: 40,
+            anchoredAt: NSPoint(x: 300, y: 200),
+            companionFrame: testCompanionFrame(),
+            visibleFrame: NSRect(x: 0, y: 0, width: 1000, height: 800),
+            placement: .above,
+            preferredBodySize: NSSize(width: startLayout.size.width + 70, height: startLayout.size.height + 40),
+            bodyOffset: offset
+        )
+        let resizedBody = bodyScreenRect(from: resizedLayout)
+
+        #expect(resizedBody.minX == startBody.minX)
+        #expect(resizedBody.maxY == startBody.maxY)
+        #expect(resizedBody.width == startBody.width + 70)
+        #expect(resizedBody.height == startBody.height + 40)
+    }
+
+    @Test
     func testConversationLayoutShrinksInsideSmallDisplay() {
         let layout = ConversationBubbleLayout.layout(
             metrics: testMetrics(),
@@ -154,7 +364,7 @@ struct CodexConversationCommandTests {
         )
 
         #expect(layout.size.width == 304)
-        #expect(abs(layout.size.height - 200) < 0.001)
+        #expect(abs(layout.size.height - 384) < 0.001)
         #expect(layout.frame.minX >= 8)
         #expect(bodyScreenRect(from: layout).maxX <= 312)
         #expect(layout.frame.maxX <= 320)
@@ -184,6 +394,7 @@ struct CodexConversationCommandTests {
                 CodexConversationTurn(question: "tell me golang is?", answer: "Go is a programming language.")
             ],
             pendingQuestion: "What is concurrency?",
+            streamingAnswer: nil,
             status: "Thinking..."
         )
 
@@ -204,10 +415,66 @@ struct CodexConversationCommandTests {
         let model = ConversationTranscriptViewModel(
             history: [],
             pendingQuestion: nil,
+            streamingAnswer: nil,
             status: nil
         )
 
         #expect(model.items == [.emptyPrompt("Ask me anything.")])
+    }
+
+    @Test
+    func testConversationTranscriptShowsStreamingAnswerForPendingQuestion() {
+        let model = ConversationTranscriptViewModel(
+            history: [],
+            pendingQuestion: "Explain buffers.",
+            streamingAnswer: "Buffers hold temporary bytes",
+            status: nil
+        )
+
+        #expect(model.items == [
+            .user("Explain buffers."),
+            .assistant("Buffers hold temporary bytes")
+        ])
+    }
+
+    @MainActor
+    @Test
+    func testAssistantTranscriptRowsUseFullAvailableWidth() {
+        let text = Array(repeating: "conversation text should use available width", count: 8)
+            .joined(separator: " ")
+        let assistantView = ConversationTranscriptView(frame: .zero)
+        assistantView.items = [.assistant(text)]
+        let userView = ConversationTranscriptView(frame: .zero)
+        userView.items = [.user(text)]
+
+        #expect(assistantView.measuredHeight(width: 360) < assistantView.measuredHeight(width: 260))
+        #expect(userView.measuredHeight(width: 360) < userView.measuredHeight(width: 260))
+    }
+
+    @MainActor
+    @Test
+    func testConversationTextStyleUpdateChangesTranscriptMeasurement() {
+        let text = Array(repeating: "conversation text should reflow after font changes", count: 5)
+            .joined(separator: " ")
+        let view = ConversationTranscriptView(frame: .zero)
+        view.items = [.assistant(text)]
+        let originalHeight = view.measuredHeight(width: 280)
+
+        var style = ConversationTranscriptStyle.defaultStyle
+        style.assistant.font = NSFont.systemFont(ofSize: 24)
+        view.updateTextStyle(style)
+
+        #expect(view.measuredHeight(width: 280) > originalHeight)
+    }
+
+    @MainActor
+    @Test
+    func testConversationTextStyleUsesDistinctUserAndAssistantBackgrounds() {
+        let style = ConversationTranscriptStyle.defaultStyle
+        let userBackground = rgbaComponents(style.itemStyle(for: .user("hello")).backgroundColor)
+        let assistantBackground = rgbaComponents(style.itemStyle(for: .assistant("hello")).backgroundColor)
+
+        #expect(userBackground != assistantBackground)
     }
 
     @Test
@@ -253,15 +520,15 @@ struct CodexConversationCommandTests {
         #expect(theme.bubbleSVGURL.lastPathComponent == "bubble.svg")
         #expect(theme.bubbleSVGURL.path.contains("ConversationThemes/cloud-default"))
         #expect(theme.metrics.width == 520)
-        #expect(theme.metrics.minHeight == 300)
-        #expect(theme.metrics.contentInsets.top == 42)
-        #expect(theme.metrics.contentInsets.left == 42)
-        #expect(theme.metrics.contentInsets.bottom == 30)
-        #expect(theme.metrics.contentInsets.right == 42)
-        #expect(theme.metrics.inputHeight == 42)
-        #expect(theme.metrics.transcriptInputSpacing == 16)
-        #expect(theme.metrics.tailAnchor == NSPoint(x: 94, y: 0))
-        #expect(theme.tailStyle == .defaultStyle)
+        #expect(theme.metrics.minHeight == 118)
+        #expect(theme.metrics.contentInsets.top == 20)
+        #expect(theme.metrics.contentInsets.left == 18)
+        #expect(theme.metrics.contentInsets.bottom == 12)
+        #expect(theme.metrics.contentInsets.right == 18)
+        #expect(theme.metrics.inputHeight == 36)
+        #expect(theme.metrics.transcriptInputSpacing == 12)
+        #expect(theme.metrics.tailAnchor == NSPoint(x: 80, y: 0))
+        #expect(theme.tailStyle == ConversationTailStyle(fill: "#FFFFFFFA", stroke: "#0000001A"))
         #expect(FileManager.default.fileExists(atPath: theme.bubbleSVGURL.path))
         #expect(theme.bubbleImage.size.width > 0)
         #expect(theme.bubbleImage.size.height > 0)
@@ -349,6 +616,7 @@ struct CodexConversationCommandTests {
                 "--cd", "/tmp/work",
                 "--output-last-message", "/tmp/answer.txt",
                 "--color", "never",
+                "--json",
                 "-"
             ]
         )
@@ -373,6 +641,51 @@ struct CodexConversationCommandTests {
     func testParsedResponseTrimsBlankSpace() {
         #expect(CodexConversationCommand.parsedResponse(from: "\n  Answer. \n") == "Answer.")
         #expect(CodexConversationCommand.parsedResponse(from: "\n \t") == nil)
+    }
+
+    @Test
+    func testStreamingParserAccumulatesDeltaEvents() {
+        var parser = CodexConversationStreamParser()
+        let first = #"{"type":"response.output_text.delta","delta":"Hel"}"#
+        let second = #"{"type":"response.output_text.delta","delta":"lo"}"#
+
+        #expect(parser.consume(Data("\(first)\n".utf8)) == "Hel")
+        #expect(parser.consume(Data("\(second)\n".utf8)) == "Hello")
+    }
+
+    @Test
+    func testStreamingParserHandlesMultibyteCharactersSplitAcrossChunks() throws {
+        var parser = CodexConversationStreamParser()
+        let line = #"{"type":"response.output_text.delta","delta":"Hi 🌕"}"#
+        let data = Data("\(line)\n".utf8)
+        let emojiStart = try #require(data.firstIndex(of: 0xF0))
+        let splitIndex = data.index(after: emojiStart)
+
+        #expect(parser.consume(Data(data[..<splitIndex])) == nil)
+        #expect(parser.consume(Data(data[splitIndex...])) == "Hi 🌕")
+    }
+
+    @Test
+    func testStreamingParserIgnoresNonAnswerOutput() {
+        var parser = CodexConversationStreamParser()
+        let progress = #"{"type":"response.reasoning_text.delta","delta":"internal thought"}"#
+        let status = #"{"type":"turn.status.delta","delta":"working"}"#
+        let answer = #"{"type":"response.output_text.delta","delta":"Answer"}"#
+
+        #expect(parser.consume(Data("plain stdout warning\n".utf8)) == nil)
+        #expect(parser.consume(Data("\(progress)\n".utf8)) == nil)
+        #expect(parser.consume(Data("\(status)\n".utf8)) == nil)
+        #expect(parser.consume(Data("\(answer)\n".utf8)) == "Answer")
+    }
+
+    @Test
+    func testStreamingParserUsesAssistantMessageEvents() {
+        var parser = CodexConversationStreamParser()
+        let line = """
+        {"type":"response_item","item":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Complete answer"}]}}
+        """
+
+        #expect(parser.consume(Data("\(line)\n".utf8)) == "Complete answer")
     }
 
     @Test
@@ -651,6 +964,190 @@ struct CodexConversationCommandTests {
     }
 
     @Test
+    func testNewCompanionInstancesDefaultToAlwaysOnTop() throws {
+        let package = try makeCompanionPackage()
+        let instance = CompanionInstance.make(package: package, existingCount: 0)
+
+        #expect(instance.layerMode == .alwaysOnTop)
+    }
+
+    @Test
+    func testInstanceStoreRoundTripsConversationBubbleSize() throws {
+        let suiteName = "DesktopCompanionBubbleSize-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+
+        let instance = CompanionInstance(
+            id: "one",
+            packageID: "lego-vader",
+            origin: CompanionAnchor(x: 10, y: 20),
+            layerMode: .desktop,
+            speechAnchor: CompanionAnchor(x: 121, y: 94),
+            bubblePlacement: .automatic,
+            animationPreset: .legoSmash,
+            conversationBubbleSize: ConversationBubbleSize(width: 480, height: 340)
+        )
+
+        CompanionInstanceStore.save([instance], userDefaults: defaults)
+
+        #expect(CompanionInstanceStore.load(userDefaults: defaults) == [instance])
+    }
+
+    @Test
+    func testInstanceStoreRoundTripsConversationBubbleOffset() throws {
+        let suiteName = "DesktopCompanionBubbleOffset-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+
+        let instance = CompanionInstance(
+            id: "one",
+            packageID: "lego-vader",
+            origin: CompanionAnchor(x: 10, y: 20),
+            layerMode: .desktop,
+            speechAnchor: CompanionAnchor(x: 121, y: 94),
+            bubblePlacement: .automatic,
+            animationPreset: .legoSmash,
+            conversationBubbleOffset: CompanionAnchor(x: -80, y: 44)
+        )
+
+        CompanionInstanceStore.save([instance], userDefaults: defaults)
+
+        #expect(CompanionInstanceStore.load(userDefaults: defaults) == [instance])
+    }
+
+    @Test
+    func testInstanceStoreLoadsLegacyInstancesWithoutConversationBubbleSize() throws {
+        let suiteName = "DesktopCompanionLegacyBubbleSize-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        let data = """
+        [
+          {
+            "id": "legacy",
+            "packageID": "lego-vader",
+            "origin": { "x": 10, "y": 20 },
+            "layerMode": "desktop",
+            "speechAnchor": { "x": 121, "y": 94 },
+            "bubblePlacement": "automatic",
+            "animationPreset": "legoSmash"
+          }
+        ]
+        """.data(using: .utf8)
+        defaults.set(data, forKey: "desktopCompanion.instances")
+
+        let instances = CompanionInstanceStore.load(userDefaults: defaults)
+
+        #expect(instances.count == 1)
+        #expect(instances.first?.id == "legacy")
+        #expect(instances.first?.conversationBubbleSize == nil)
+        #expect(instances.first?.conversationBubbleOffset == nil)
+    }
+
+    @Test
+    func testInstanceStoreIgnoresMalformedConversationBubbleSize() throws {
+        let suiteName = "DesktopCompanionMalformedBubbleSize-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        let data = """
+        [
+          {
+            "id": "bad-size",
+            "packageID": "lego-vader",
+            "origin": { "x": 10, "y": 20 },
+            "layerMode": "desktop",
+            "speechAnchor": { "x": 121, "y": 94 },
+            "bubblePlacement": "automatic",
+            "animationPreset": "legoSmash",
+            "conversationBubbleSize": { "width": "wide", "height": 340 }
+          }
+        ]
+        """.data(using: .utf8)
+        defaults.set(data, forKey: "desktopCompanion.instances")
+
+        let instances = CompanionInstanceStore.load(userDefaults: defaults)
+
+        #expect(instances.count == 1)
+        #expect(instances.first?.conversationBubbleSize == nil)
+    }
+
+    @Test
+    func testInstanceStoreIgnoresMalformedConversationBubbleOffset() throws {
+        let suiteName = "DesktopCompanionMalformedBubbleOffset-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        let data = """
+        [
+          {
+            "id": "bad-offset",
+            "packageID": "lego-vader",
+            "origin": { "x": 10, "y": 20 },
+            "layerMode": "desktop",
+            "speechAnchor": { "x": 121, "y": 94 },
+            "bubblePlacement": "automatic",
+            "animationPreset": "legoSmash",
+            "conversationBubbleOffset": { "x": "left", "y": 44 }
+          }
+        ]
+        """.data(using: .utf8)
+        defaults.set(data, forKey: "desktopCompanion.instances")
+
+        let instances = CompanionInstanceStore.load(userDefaults: defaults)
+
+        #expect(instances.count == 1)
+        #expect(instances.first?.conversationBubbleOffset == nil)
+    }
+
+    @Test
+    func testInstanceStoreIgnoresInvalidConversationBubbleSize() throws {
+        let suiteName = "DesktopCompanionInvalidBubbleSize-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        let data = """
+        [
+          {
+            "id": "invalid-size",
+            "packageID": "lego-vader",
+            "origin": { "x": 10, "y": 20 },
+            "layerMode": "desktop",
+            "speechAnchor": { "x": 121, "y": 94 },
+            "bubblePlacement": "automatic",
+            "animationPreset": "legoSmash",
+            "conversationBubbleSize": { "width": -20, "height": 0 }
+          }
+        ]
+        """.data(using: .utf8)
+        defaults.set(data, forKey: "desktopCompanion.instances")
+
+        let instances = CompanionInstanceStore.load(userDefaults: defaults)
+
+        #expect(instances.count == 1)
+        #expect(instances.first?.conversationBubbleSize == nil)
+    }
+
+    @MainActor
+    @Test
+    func testConversationBubbleLevelTracksCompanionLevel() {
+        for mode in CompanionLayerMode.allCases {
+            let companionLevel = mode.windowLevel
+            let bubbleLevel = ConversationBubbleWindowController.bubbleLevel(for: companionLevel)
+            let expectedRawLevel = max(companionLevel.rawValue, NSWindow.Level.floating.rawValue) + 1
+
+            #expect(bubbleLevel.rawValue == expectedRawLevel)
+        }
+
+        #expect(
+            ConversationBubbleWindowController
+                .bubbleLevel(for: CompanionLayerMode.desktop.windowLevel)
+                .rawValue > NSWindow.Level.floating.rawValue
+        )
+        #expect(
+            ConversationBubbleWindowController
+                .bubbleLevel(for: CompanionLayerMode.alwaysOnTop.windowLevel)
+                .rawValue > CompanionLayerMode.alwaysOnTop.windowLevel.rawValue
+        )
+    }
+
+    @Test
     func testConversationLayoutHonorsExplicitRightPlacement() {
         let layout = ConversationBubbleLayout.layout(
             metrics: testMetrics(),
@@ -789,5 +1286,15 @@ struct CodexConversationCommandTests {
             width: layout.bodyRect.width,
             height: layout.bodyRect.height
         )
+    }
+
+    private func rgbaComponents(_ color: NSColor) -> [CGFloat] {
+        let color = color.usingColorSpace(.deviceRGB) ?? color
+        return [
+            color.redComponent,
+            color.greenComponent,
+            color.blueComponent,
+            color.alphaComponent
+        ]
     }
 }

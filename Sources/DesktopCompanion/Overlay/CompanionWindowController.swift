@@ -23,7 +23,9 @@ final class CompanionWindowController: NSWindowController {
         )
         self.conversationController = ConversationBubbleWindowController(
             package: package,
-            bubblePlacement: instance.bubblePlacement
+            bubblePlacement: instance.bubblePlacement,
+            preferredBodySize: instance.conversationBubbleSize?.size,
+            bodyOffset: instance.conversationBubbleOffset?.point
         )
         self.onInstanceChanged = onInstanceChanged
         self.onInstanceClosed = onInstanceClosed
@@ -61,6 +63,12 @@ final class CompanionWindowController: NSWindowController {
         }
         content.onLayerModeChanged = { [weak self] layerMode in
             self?.setLayerMode(layerMode)
+        }
+        conversationController.onBodySizeChanged = { [weak self] size in
+            self?.setConversationBubbleSize(size)
+        }
+        conversationController.onBodyOffsetChanged = { [weak self] offset in
+            self?.setConversationBubbleOffset(offset)
         }
 
         window.contentView = content
@@ -164,5 +172,16 @@ final class CompanionWindowController: NSWindowController {
 
         window.applyLayerMode(layerMode)
         window.orderFrontRegardless()
+        conversationController.setCompanionLevel(window.level)
+    }
+
+    private func setConversationBubbleSize(_ size: NSSize) {
+        instance.conversationBubbleSize = ConversationBubbleSize(size: size)
+        onInstanceChanged(instance)
+    }
+
+    private func setConversationBubbleOffset(_ offset: NSPoint?) {
+        instance.conversationBubbleOffset = offset.map { CompanionAnchor(point: $0) }
+        onInstanceChanged(instance)
     }
 }

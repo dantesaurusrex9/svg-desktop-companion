@@ -59,6 +59,11 @@ final class CompanionContentView: NSView {
         true
     }
 
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        addCursorRect(bounds, cursor: .openHand)
+    }
+
     override func mouseEntered(with event: NSEvent) {
         closeButton.alphaValue = 1
         NSCursor.openHand.set()
@@ -122,11 +127,11 @@ final class CompanionContentView: NSView {
         conversateItem.target = self
         menu.addItem(conversateItem)
 
-        let reloadBubbleThemeItem = NSMenuItem(title: "Reload Bubble Theme", action: #selector(reloadConversationThemeRequested), keyEquivalent: "")
+        let reloadBubbleThemeItem = NSMenuItem(title: "Reload Overlay Theme", action: #selector(reloadConversationThemeRequested), keyEquivalent: "")
         reloadBubbleThemeItem.target = self
         menu.addItem(reloadBubbleThemeItem)
 
-        let bubbleThemeItem = NSMenuItem(title: "Bubble Theme", action: nil, keyEquivalent: "")
+        let bubbleThemeItem = NSMenuItem(title: "Overlay Theme", action: nil, keyEquivalent: "")
         let bubbleThemeMenu = NSMenu()
         for theme in conversationThemes {
             let themeItem = NSMenuItem(title: theme.displayName, action: #selector(conversationThemeRequested(_:)), keyEquivalent: "")

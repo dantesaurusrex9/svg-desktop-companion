@@ -291,15 +291,15 @@ enum ConversationThemeLoader {
             folderURL: URL(fileURLWithPath: "/"),
             bubbleSVGURL: URL(fileURLWithPath: "/"),
             metrics: ConversationBubbleMetrics(
-                width: 520,
-                minHeight: 300,
-                maxVisibleHeightRatio: 0.5,
-                contentInsets: NSEdgeInsets(top: 42, left: 42, bottom: 30, right: 42),
-                inputHeight: 42,
-                transcriptInputSpacing: 16,
-                tailAnchor: NSPoint(x: 94, y: 0)
+                width: 500,
+                minHeight: 260,
+                maxVisibleHeightRatio: 0.52,
+                contentInsets: NSEdgeInsets(top: 36, left: 36, bottom: 26, right: 36),
+                inputHeight: 38,
+                transcriptInputSpacing: 14,
+                tailAnchor: NSPoint(x: 88, y: 0)
             ),
-            tailStyle: .defaultStyle
+            tailStyle: ConversationTailStyle(fill: "#FFFFFFFA", stroke: "#0000001A")
         )
     }
 }
