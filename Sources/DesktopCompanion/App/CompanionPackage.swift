@@ -138,6 +138,10 @@ enum CompanionPackageLoader {
         }
     }
 
+    static func libraryPackages(fileManager: FileManager = .default) -> [CompanionPackage] {
+        availablePackages(fileManager: fileManager).filter { $0.id != legacyUserPackageID }
+    }
+
     static func loadPackage(from folderURL: URL, fileManager: FileManager = .default) throws -> CompanionPackage {
         let manifestURL = folderURL.appendingPathComponent("companion.json", isDirectory: false)
         let manifestData = try dataIfSmall(from: manifestURL, maxBytes: maxManifestByteCount, fileManager: fileManager)

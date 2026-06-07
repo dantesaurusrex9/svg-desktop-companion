@@ -8,6 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var typingMonitor: TypingActivityMonitor?
     private var hotKeyMonitor: GlobalHotKeyMonitor?
     private var importSheetController: CompanionSVGImportWindowController?
+    private var settingsController: CompanionSettingsWindowController?
     private var hasKeyboardAccess = true
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -20,6 +21,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         libraryController.onImportPackage = { [weak self] in
             self?.importPackageFolder()
+        }
+        libraryController.onOpenSettings = { [weak self] in
+            self?.openSettings()
         }
         libraryController.show()
 
@@ -62,6 +66,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func restoreInstances() {
         for instance in CompanionInstanceStore.load() {
+            guard instance.packageID != CompanionPackageLoader.legacyUserPackageID else {
+                continue
+            }
+
             guard let package = CompanionPackageLoader.package(id: instance.packageID) else {
                 continue
             }
@@ -118,9 +126,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func refreshLibrary() {
         libraryController?.reload(
-            packages: CompanionPackageLoader.availablePackages(),
+            packages: CompanionPackageLoader.libraryPackages(),
             instances: overlayControllers.values.map(\.instance)
         )
+    }
+
+    private func openSettings() {
+        guard let parentWindow = libraryController?.window else {
+            return
+        }
+
+        let settingsController = CompanionSettingsWindowController()
+        settingsController.onThemeSelected = { [weak self] _ in
+            self?.libraryController?.reloadTheme()
+            self?.refreshLibrary()
+        }
+        self.settingsController = settingsController
+        settingsController.beginSheet(parentWindow: parentWindow) { [weak self] in
+            self?.settingsController = nil
+        }
     }
 
     private func importSVG() {

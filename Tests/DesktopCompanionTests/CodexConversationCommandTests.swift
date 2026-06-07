@@ -38,6 +38,92 @@ struct CodexConversationCommandTests {
 
     @MainActor
     @Test
+    func testLibraryCardsShowActiveCountsAndSpawnPackages() throws {
+        let firstPackage = testPackage(id: "first-package", displayName: "LEGO Vader")
+        let secondPackage = testPackage(id: "second-package", displayName: "Tiny Bot")
+        let legacyPackage = testPackage(id: CompanionPackageLoader.legacyUserPackageID, displayName: "User SVG Override")
+        let controller = CompanionLibraryWindowController()
+        var spawnedPackageIDs: [String] = []
+        var didRequestSettings = false
+        controller.onSpawnPackage = { package in
+            spawnedPackageIDs.append(package.id)
+        }
+        controller.onOpenSettings = {
+            didRequestSettings = true
+        }
+
+        controller.reload(
+            packages: [legacyPackage, firstPackage, secondPackage],
+            instances: [
+                testInstance(id: "legacy", packageID: legacyPackage.id),
+                testInstance(id: "one", packageID: firstPackage.id),
+                testInstance(id: "two", packageID: firstPackage.id),
+                testInstance(id: "three", packageID: secondPackage.id)
+            ]
+        )
+
+        let contentView = try #require(controller.window?.contentView)
+        let labels = descendantViews(ofType: NSTextField.self, in: contentView)
+        let labelTexts = labels.map(\.stringValue)
+        let buttons = descendantViews(ofType: NSButton.self, in: contentView)
+        let buttonTitles = buttons.map(\.title)
+        let spawnButtons = buttons.filter { $0.title == AppCopy.spawnAction }
+        let browseButton = try #require(buttons.first { $0.title == AppCopy.browseAction })
+        let accountButton = try #require(buttons.first { $0.title == AppCopy.accountAction })
+        let settingsButton = try #require(buttons.first { $0.title == AppCopy.settingsAction })
+        let sharedButtonTitles = Set([
+            AppCopy.companionsTitle,
+            AppCopy.uploadAction,
+            AppCopy.browseAction,
+            AppCopy.accountAction,
+            AppCopy.settingsAction
+        ])
+        let sharedButtons = buttons.filter { sharedButtonTitles.contains($0.title) }
+        let cardActiveLabels = labels.filter { [AppCopy.activeCount(2), AppCopy.activeCount(1)].contains($0.stringValue) }
+        let previewViews = descendantViews(ofType: SVGCompanionView.self, in: contentView)
+
+        #expect(labelTexts.contains(AppCopy.libraryTitle))
+        #expect(labelTexts.contains(AppCopy.activeCount(3)))
+        #expect(labelTexts.contains(AppCopy.activeCount(2)))
+        #expect(labelTexts.contains(AppCopy.activeCount(1)))
+        #expect(labelTexts.contains(AppCopy.marketplaceTitle))
+        #expect(!labelTexts.contains("Desktop Companion"))
+        #expect(controller.window?.title == AppCopy.libraryTitle)
+        #expect(labelTexts.contains(firstPackage.displayName))
+        #expect(labelTexts.contains(secondPackage.displayName))
+        #expect(!labelTexts.contains(firstPackage.displayName.uppercased()))
+        #expect(!labelTexts.contains(secondPackage.displayName.uppercased()))
+        #expect(!labelTexts.contains(legacyPackage.displayName))
+        #expect(buttonTitles.contains(AppCopy.uploadAction))
+        #expect(buttonTitles.contains(AppCopy.browseAction))
+        #expect(buttonTitles.contains(AppCopy.accountAction))
+        #expect(buttonTitles.contains(AppCopy.settingsAction))
+        #expect(!browseButton.isEnabled)
+        #expect(browseButton.toolTip == AppCopy.marketplaceComingSoonTooltip)
+        #expect(!accountButton.isEnabled)
+        #expect(accountButton.toolTip == AppCopy.accountComingSoonTooltip)
+        #expect(spawnButtons.count == 2)
+        #expect(sharedButtons.count == sharedButtonTitles.count)
+        #expect(sharedButtons.allSatisfy { $0.identifier == AppTheme.roundedButtonIdentifier })
+        #expect(spawnButtons.allSatisfy { $0.identifier == AppTheme.roundedButtonIdentifier })
+        #expect(spawnButtons.allSatisfy { $0.alignment == .center })
+        #expect(sharedButtons.allSatisfy { !$0.isBordered })
+        #expect(cardActiveLabels.count == 2)
+        #expect(cardActiveLabels.allSatisfy { $0.alignment == .center })
+        #expect(previewViews.count == 2)
+        #expect(previewViews.allSatisfy { hasIdleAnimation(in: $0) })
+
+        settingsButton.performClick(nil)
+        spawnButtons.forEach { $0.performClick(nil) }
+
+        #expect(didRequestSettings)
+        #expect(spawnedPackageIDs.count == 2)
+        #expect(Set(spawnedPackageIDs) == Set([firstPackage.id, secondPackage.id]))
+        controller.close()
+    }
+
+    @MainActor
+    @Test
     func testCompanionDragOriginTracksScreenDelta() {
         let origin = CompanionContentView.draggedWindowOrigin(
             dragStartScreenPoint: NSPoint(x: 100, y: 200),
@@ -964,6 +1050,59 @@ struct CodexConversationCommandTests {
     }
 
     @Test
+    func testThemeStoreDefaultsToNotesDark() throws {
+        let suiteName = "DesktopCompanionTheme-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+
+        #expect(AppThemeStore.selectedPreset(userDefaults: defaults) == .notesDark)
+    }
+
+    @Test
+    func testThemeStoreSavesGraphiteDark() throws {
+        let suiteName = "DesktopCompanionTheme-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+
+        AppThemeStore.save(.graphiteDark, userDefaults: defaults)
+
+        #expect(AppThemeStore.selectedPreset(userDefaults: defaults) == .graphiteDark)
+    }
+
+    @Test
+    func testThemeStoreFallsBackForInvalidValue() throws {
+        let suiteName = "DesktopCompanionTheme-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        defaults.set("missing-theme", forKey: AppThemeStore.selectedPresetDefaultsKey)
+
+        #expect(AppThemeStore.selectedPreset(userDefaults: defaults) == .notesDark)
+    }
+
+    @MainActor
+    @Test
+    func testSettingsThemeSelectionPersistsAndNotifies() throws {
+        let suiteName = "DesktopCompanionSettings-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        let controller = CompanionSettingsWindowController(userDefaults: defaults)
+        var selectedPreset: AppThemePreset?
+        controller.onThemeSelected = { preset in
+            selectedPreset = preset
+        }
+
+        let contentView = try #require(controller.window?.contentView)
+        let themePopup = try #require(descendantViews(ofType: NSPopUpButton.self, in: contentView).first)
+        themePopup.selectItem(withTitle: AppThemePreset.graphiteDark.title)
+        let action = try #require(themePopup.action)
+        NSApplication.shared.sendAction(action, to: themePopup.target, from: themePopup)
+
+        #expect(AppThemeStore.selectedPreset(userDefaults: defaults) == .graphiteDark)
+        #expect(selectedPreset == .graphiteDark)
+        controller.close()
+    }
+
+    @Test
     func testNewCompanionInstancesDefaultToAlwaysOnTop() throws {
         let package = try makeCompanionPackage()
         let instance = CompanionInstance.make(package: package, existingCount: 0)
@@ -1262,10 +1401,10 @@ struct CodexConversationCommandTests {
         return try CompanionPackageLoader.loadPackage(from: folderURL)
     }
 
-    private func testPackage(id: String) -> CompanionPackage {
+    private func testPackage(id: String, displayName: String? = nil) -> CompanionPackage {
         CompanionPackage(
             id: id,
-            displayName: id,
+            displayName: displayName ?? id,
             folderURL: URL(fileURLWithPath: "/tmp/\(id)", isDirectory: true),
             svgURL: URL(fileURLWithPath: "/tmp/\(id)/companion.svg", isDirectory: false),
             conversationThemesDirectoryURL: nil,
@@ -1273,6 +1412,31 @@ struct CodexConversationCommandTests {
             bubblePlacement: .automatic,
             animationPreset: .wholeObjectReaction
         )
+    }
+
+    private func testInstance(id: String, packageID: String) -> CompanionInstance {
+        CompanionInstance(
+            id: id,
+            packageID: packageID,
+            origin: CompanionAnchor(x: 10, y: 20),
+            layerMode: .desktop,
+            speechAnchor: CompanionAnchor(x: 121, y: 94),
+            bubblePlacement: .automatic,
+            animationPreset: .wholeObjectReaction
+        )
+    }
+
+    @MainActor
+    private func descendantViews<View: NSView>(ofType type: View.Type, in root: NSView) -> [View] {
+        let matchingRoot = (root as? View).map { [$0] } ?? []
+        return matchingRoot + root.subviews.flatMap { descendantViews(ofType: type, in: $0) }
+    }
+
+    @MainActor
+    private func hasIdleAnimation(in root: NSView) -> Bool {
+        descendantViews(ofType: NSView.self, in: root).contains {
+            $0.layer?.animation(forKey: "desktopCompanionIdle") != nil
+        }
     }
 
     private func testCompanionFrame() -> NSRect {

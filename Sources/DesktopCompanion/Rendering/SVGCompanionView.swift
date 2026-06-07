@@ -13,14 +13,17 @@ final class SVGCompanionView: NSView {
     private(set) var mouthAnchor = CompanionAsset.defaultMouthAnchor
     private var package: CompanionPackage?
     private var animationPreset: CompanionAnimationPreset?
+    private let animateIdle: Bool
 
     init(
         frame frameRect: NSRect = .zero,
         package: CompanionPackage? = CompanionPackageLoader.selectedPackage(),
-        animationPreset: CompanionAnimationPreset? = nil
+        animationPreset: CompanionAnimationPreset? = nil,
+        animateIdle: Bool = true
     ) {
         self.package = package
         self.animationPreset = animationPreset
+        self.animateIdle = animateIdle
         super.init(frame: frameRect)
         setupImageView()
         reloadSVG()
@@ -154,7 +157,9 @@ final class SVGCompanionView: NSView {
             imageView.bottomAnchor.constraint(equalTo: stageView.bottomAnchor)
         ])
 
-        startIdleAnimation()
+        if animateIdle {
+            startIdleAnimation()
+        }
     }
 
     private func startIdleAnimation() {

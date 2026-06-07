@@ -4,21 +4,28 @@ final class CompanionLibraryWindowController: NSWindowController {
     var onSpawnPackage: ((CompanionPackage) -> Void)?
     var onImportSVG: (() -> Void)?
     var onImportPackage: (() -> Void)?
+    var onOpenSettings: (() -> Void)?
 
     private let packageStack = NSStackView()
-    private let activeLabel = AppTheme.label("", font: NSFont.systemFont(ofSize: 12), color: AppTheme.secondaryText)
+    private let activeLabel = AppTheme.label("", font: AppTypography.sidebarStatus, color: AppTheme.secondaryText)
     private var packages: [CompanionPackage] = []
+    private var instances: [CompanionInstance] = []
 
     init() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 760, height: 520),
+            contentRect: NSRect(x: 0, y: 0, width: 860, height: 560),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
-        window.title = "Desktop Companion"
-        window.minSize = NSSize(width: 620, height: 420)
+        window.title = AppCopy.libraryTitle
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
+        window.styleMask.insert(.fullSizeContentView)
+        window.minSize = NSSize(width: 720, height: 460)
         window.isReleasedWhenClosed = false
+        window.isMovableByWindowBackground = true
+        window.backgroundColor = AppTheme.background
 
         super.init(window: window)
 
@@ -37,9 +44,17 @@ final class CompanionLibraryWindowController: NSWindowController {
     }
 
     func reload(packages: [CompanionPackage], instances: [CompanionInstance]) {
-        self.packages = packages
-        activeLabel.stringValue = "\(instances.count) active"
-        rebuildPackageRows(instances: instances)
+        self.packages = packages.filter { $0.id != CompanionPackageLoader.legacyUserPackageID }
+        self.instances = instances.filter { $0.packageID != CompanionPackageLoader.legacyUserPackageID }
+        activeLabel.stringValue = activeText(count: self.instances.count)
+        rebuildPackageRows(instances: self.instances)
+    }
+
+    func reloadTheme() {
+        packageStack.removeFromSuperview()
+        window?.backgroundColor = AppTheme.background
+        window?.contentView = makeContentView()
+        reload(packages: packages, instances: instances)
     }
 
     private func makeContentView() -> NSView {
@@ -47,28 +62,117 @@ final class CompanionLibraryWindowController: NSWindowController {
         root.wantsLayer = true
         root.layer?.backgroundColor = AppTheme.background.cgColor
 
-        let headerStack = NSStackView()
-        headerStack.orientation = .horizontal
-        headerStack.alignment = .centerY
-        headerStack.spacing = 12
-        headerStack.translatesAutoresizingMaskIntoConstraints = false
+        let sidebar = makeSidebarView()
+        let mainContent = makeMainContentView()
 
-        let titleStack = NSStackView()
-        titleStack.orientation = .vertical
-        titleStack.alignment = .leading
-        titleStack.spacing = 2
-        titleStack.translatesAutoresizingMaskIntoConstraints = false
-        let titleLabel = AppTheme.label("Companions", font: NSFont.systemFont(ofSize: 22, weight: .semibold))
-        titleStack.addArrangedSubview(titleLabel)
-        titleStack.addArrangedSubview(activeLabel)
+        root.addSubview(sidebar)
+        root.addSubview(mainContent)
 
-        let importSVGButton = AppTheme.button("Import SVG", target: self, action: #selector(importSVGRequested))
-        let importPackageButton = AppTheme.button("Import Package", target: self, action: #selector(importPackageRequested))
+        NSLayoutConstraint.activate([
+            sidebar.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            sidebar.topAnchor.constraint(equalTo: root.topAnchor),
+            sidebar.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+            sidebar.widthAnchor.constraint(equalToConstant: AppLayout.sidebarWidth),
 
-        headerStack.addArrangedSubview(titleStack)
-        headerStack.addArrangedSubview(NSView())
-        headerStack.addArrangedSubview(importSVGButton)
-        headerStack.addArrangedSubview(importPackageButton)
+            mainContent.leadingAnchor.constraint(equalTo: sidebar.trailingAnchor),
+            mainContent.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            mainContent.topAnchor.constraint(equalTo: root.topAnchor),
+            mainContent.bottomAnchor.constraint(equalTo: root.bottomAnchor)
+        ])
+
+        return root
+    }
+
+    private func makeSidebarView() -> NSView {
+        let sidebar = NSView()
+        sidebar.wantsLayer = true
+        sidebar.layer?.backgroundColor = AppTheme.backgroundDark.cgColor
+        sidebar.translatesAutoresizingMaskIntoConstraints = false
+
+        activeLabel.textColor = AppTheme.secondaryText
+        let titleLabel = AppTheme.label(AppCopy.libraryTitle, font: AppTypography.sidebarHeader)
+        let companionItem = AppTheme.sidebarButton(
+            title: AppCopy.companionsTitle,
+            systemSymbolName: "square.grid.2x2",
+            target: nil,
+            action: nil
+        )
+        let marketplaceLabel = AppTheme.label(AppCopy.marketplaceTitle, font: AppTypography.sectionLabel, color: AppTheme.secondaryText)
+        let uploadButton = AppTheme.sidebarButton(
+            title: AppCopy.uploadAction,
+            systemSymbolName: "square.and.arrow.up",
+            target: self,
+            action: #selector(uploadRequested(_:))
+        )
+        let browseButton = AppTheme.sidebarButton(
+            title: AppCopy.browseAction,
+            systemSymbolName: "bag",
+            target: nil,
+            action: nil,
+            isEnabled: false
+        )
+        browseButton.toolTip = AppCopy.marketplaceComingSoonTooltip
+
+        let topStack = NSStackView(views: [titleLabel, activeLabel, companionItem, marketplaceLabel, uploadButton, browseButton])
+        topStack.orientation = .vertical
+        topStack.alignment = .leading
+        topStack.spacing = AppLayout.sidebarStackSpacing
+        topStack.setCustomSpacing(AppLayout.sidebarStatusSpacing, after: activeLabel)
+        topStack.setCustomSpacing(AppLayout.sidebarSectionSpacing, after: companionItem)
+        topStack.translatesAutoresizingMaskIntoConstraints = false
+
+        let accountButton = AppTheme.sidebarButton(
+            title: AppCopy.accountAction,
+            systemSymbolName: "person.crop.circle",
+            target: nil,
+            action: nil,
+            isEnabled: false,
+            fillColor: AppTheme.backgroundDark
+        )
+        accountButton.toolTip = AppCopy.accountComingSoonTooltip
+        let settingsButton = AppTheme.sidebarButton(
+            title: AppCopy.settingsAction,
+            systemSymbolName: "gearshape",
+            target: self,
+            action: #selector(settingsRequested),
+            fillColor: AppTheme.backgroundDark
+        )
+        let utilityStack = NSStackView(views: [accountButton, settingsButton])
+        utilityStack.orientation = .vertical
+        utilityStack.alignment = .leading
+        utilityStack.spacing = AppLayout.utilityItemSpacing
+        utilityStack.translatesAutoresizingMaskIntoConstraints = false
+
+        sidebar.addSubview(topStack)
+        sidebar.addSubview(utilityStack)
+
+        NSLayoutConstraint.activate([
+            topStack.leadingAnchor.constraint(equalTo: sidebar.leadingAnchor, constant: AppLayout.sidebarHorizontalInset),
+            topStack.trailingAnchor.constraint(equalTo: sidebar.trailingAnchor, constant: -AppLayout.sidebarHorizontalInset),
+            topStack.topAnchor.constraint(equalTo: sidebar.topAnchor, constant: AppLayout.sidebarTopInset),
+
+            utilityStack.leadingAnchor.constraint(equalTo: sidebar.leadingAnchor, constant: AppLayout.sidebarHorizontalInset),
+            utilityStack.trailingAnchor.constraint(equalTo: sidebar.trailingAnchor, constant: -AppLayout.sidebarHorizontalInset),
+            utilityStack.bottomAnchor.constraint(equalTo: sidebar.bottomAnchor, constant: -AppLayout.sidebarBottomInset),
+
+            companionItem.widthAnchor.constraint(equalTo: topStack.widthAnchor),
+            uploadButton.widthAnchor.constraint(equalTo: topStack.widthAnchor),
+            browseButton.widthAnchor.constraint(equalTo: topStack.widthAnchor),
+            accountButton.widthAnchor.constraint(equalTo: utilityStack.widthAnchor),
+            settingsButton.widthAnchor.constraint(equalTo: utilityStack.widthAnchor)
+        ])
+
+        return sidebar
+    }
+
+    private func makeMainContentView() -> NSView {
+        let mainContent = NSView()
+        mainContent.wantsLayer = true
+        mainContent.layer?.backgroundColor = AppTheme.background.cgColor
+        mainContent.translatesAutoresizingMaskIntoConstraints = false
+
+        let titleLabel = AppTheme.label(AppCopy.companionsTitle, font: AppTypography.pageTitle)
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
 
         let scrollView = NSScrollView()
         scrollView.translatesAutoresizingMaskIntoConstraints = false
@@ -78,30 +182,42 @@ final class CompanionLibraryWindowController: NSWindowController {
 
         packageStack.orientation = .vertical
         packageStack.alignment = .leading
-        packageStack.spacing = 10
+        packageStack.spacing = AppLayout.cardStackSpacing
         packageStack.translatesAutoresizingMaskIntoConstraints = false
-        scrollView.documentView = packageStack
 
-        root.addSubview(headerStack)
-        root.addSubview(scrollView)
+        let documentView = FlippedDocumentView()
+        documentView.translatesAutoresizingMaskIntoConstraints = false
+        documentView.addSubview(packageStack)
+        scrollView.documentView = documentView
+
+        mainContent.addSubview(titleLabel)
+        mainContent.addSubview(scrollView)
 
         NSLayoutConstraint.activate([
-            headerStack.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 24),
-            headerStack.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -24),
-            headerStack.topAnchor.constraint(equalTo: root.topAnchor, constant: 22),
+            titleLabel.leadingAnchor.constraint(equalTo: mainContent.leadingAnchor, constant: AppLayout.contentHorizontalInset),
+            titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: mainContent.trailingAnchor, constant: -AppLayout.contentHorizontalInset),
+            titleLabel.topAnchor.constraint(equalTo: mainContent.topAnchor, constant: AppLayout.contentTopInset),
 
-            scrollView.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 24),
-            scrollView.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -24),
-            scrollView.topAnchor.constraint(equalTo: headerStack.bottomAnchor, constant: 18),
-            scrollView.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -24),
+            scrollView.leadingAnchor.constraint(equalTo: mainContent.leadingAnchor, constant: AppLayout.contentHorizontalInset),
+            scrollView.trailingAnchor.constraint(equalTo: mainContent.trailingAnchor, constant: -AppLayout.contentHorizontalInset),
+            scrollView.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: AppLayout.titleToListSpacing),
+            scrollView.bottomAnchor.constraint(equalTo: mainContent.bottomAnchor, constant: -AppLayout.contentBottomInset),
 
-            packageStack.leadingAnchor.constraint(equalTo: scrollView.contentView.leadingAnchor),
-            packageStack.trailingAnchor.constraint(equalTo: scrollView.contentView.trailingAnchor),
-            packageStack.topAnchor.constraint(equalTo: scrollView.contentView.topAnchor),
-            packageStack.widthAnchor.constraint(equalTo: scrollView.contentView.widthAnchor)
+            documentView.widthAnchor.constraint(equalTo: scrollView.contentView.widthAnchor),
+            documentView.heightAnchor.constraint(greaterThanOrEqualTo: scrollView.contentView.heightAnchor),
+
+            packageStack.leadingAnchor.constraint(equalTo: documentView.leadingAnchor),
+            packageStack.trailingAnchor.constraint(equalTo: documentView.trailingAnchor),
+            packageStack.topAnchor.constraint(equalTo: documentView.topAnchor),
+            packageStack.bottomAnchor.constraint(lessThanOrEqualTo: documentView.bottomAnchor),
+            packageStack.widthAnchor.constraint(equalTo: documentView.widthAnchor)
         ])
 
-        return root
+        return mainContent
+    }
+
+    private func activeText(count: Int) -> String {
+        AppCopy.activeCount(count)
     }
 
     private func rebuildPackageRows(instances: [CompanionInstance]) {
@@ -111,20 +227,38 @@ final class CompanionLibraryWindowController: NSWindowController {
         }
 
         if packages.isEmpty {
-            let emptyLabel = AppTheme.label("No companions installed.", font: NSFont.systemFont(ofSize: 14), color: AppTheme.secondaryText)
+            let emptyLabel = AppTheme.label(AppCopy.emptyLibrary, font: AppTypography.sidebarHeader, color: AppTheme.secondaryText)
             packageStack.addArrangedSubview(emptyLabel)
             return
         }
 
+        let activeCounts = Dictionary(grouping: instances, by: \.packageID).mapValues { $0.count }
         for package in packages {
-            let activeCount = instances.filter { $0.packageID == package.id }.count
-            let row = CompanionPackageRowView(package: package, activeCount: activeCount)
-            row.onSpawn = { [weak self] package in
-                self?.onSpawnPackage?(package)
-            }
-            packageStack.addArrangedSubview(row)
-            row.widthAnchor.constraint(equalTo: packageStack.widthAnchor).isActive = true
+            let card = makePackageCard(for: package, activeCount: activeCounts[package.id, default: 0])
+            packageStack.addArrangedSubview(card)
+            card.widthAnchor.constraint(equalTo: packageStack.widthAnchor).isActive = true
         }
+    }
+
+    private func makePackageCard(for package: CompanionPackage, activeCount: Int) -> CompanionPackageCardView {
+        let card = CompanionPackageCardView(package: package, activeCount: activeCount)
+        card.onSpawn = { [weak self] package in
+            self?.onSpawnPackage?(package)
+        }
+        return card
+    }
+
+    @objc private func uploadRequested(_ sender: NSButton) {
+        let menu = NSMenu()
+        let importSVGItem = NSMenuItem(title: AppCopy.importSVGAction, action: #selector(importSVGRequested), keyEquivalent: "")
+        importSVGItem.target = self
+        menu.addItem(importSVGItem)
+
+        let importPackageItem = NSMenuItem(title: AppCopy.importPackageAction, action: #selector(importPackageRequested), keyEquivalent: "")
+        importPackageItem.target = self
+        menu.addItem(importPackageItem)
+
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.maxY + 4), in: sender)
     }
 
     @objc private func importSVGRequested() {
@@ -134,9 +268,19 @@ final class CompanionLibraryWindowController: NSWindowController {
     @objc private func importPackageRequested() {
         onImportPackage?()
     }
+
+    @objc private func settingsRequested() {
+        onOpenSettings?()
+    }
 }
 
-private final class CompanionPackageRowView: RoundedPanelView {
+private final class FlippedDocumentView: NSView {
+    override var isFlipped: Bool {
+        true
+    }
+}
+
+private final class CompanionPackageCardView: RoundedPanelView {
     var onSpawn: ((CompanionPackage) -> Void)?
     private let package: CompanionPackage
 
@@ -154,39 +298,87 @@ private final class CompanionPackageRowView: RoundedPanelView {
     private func setup(activeCount: Int) {
         fillColor = AppTheme.backgroundDark
 
-        let nameLabel = AppTheme.label(package.displayName, font: NSFont.systemFont(ofSize: 15, weight: .semibold))
-        let detailLabel = AppTheme.label(detailText(activeCount: activeCount), font: NSFont.systemFont(ofSize: 12), color: AppTheme.secondaryText)
+        let nameLabel = AppTheme.label(package.displayName, font: AppTypography.cardTitle)
+        let detailLabel = AppTheme.label(detailText, font: AppTypography.cardDetail, color: AppTheme.secondaryText)
+        let activeBadge = badge(text: activeText(count: activeCount))
+        let previewView = makePreviewView()
 
         let textStack = NSStackView()
         textStack.orientation = .vertical
         textStack.alignment = .leading
-        textStack.spacing = 3
+        textStack.spacing = AppLayout.cardTextSpacing
         textStack.translatesAutoresizingMaskIntoConstraints = false
         textStack.addArrangedSubview(nameLabel)
         textStack.addArrangedSubview(detailLabel)
 
-        let spawnButton = AppTheme.button("Spawn", target: self, action: #selector(spawnRequested))
+        let spawnButton = AppTheme.primaryButton(AppCopy.spawnAction, target: self, action: #selector(spawnRequested))
         spawnButton.translatesAutoresizingMaskIntoConstraints = false
 
+        let actionStack = NSStackView(views: [activeBadge, spawnButton])
+        actionStack.orientation = .vertical
+        actionStack.alignment = .trailing
+        actionStack.spacing = AppLayout.actionStackSpacing
+        actionStack.translatesAutoresizingMaskIntoConstraints = false
+
         addSubview(textStack)
-        addSubview(spawnButton)
+        addSubview(previewView)
+        addSubview(actionStack)
 
         NSLayoutConstraint.activate([
-            heightAnchor.constraint(greaterThanOrEqualToConstant: 68),
+            heightAnchor.constraint(greaterThanOrEqualToConstant: AppLayout.cardMinimumHeight),
 
-            textStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
+            textStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: AppLayout.cardTextLeadingInset),
             textStack.centerYAnchor.constraint(equalTo: centerYAnchor),
-            textStack.trailingAnchor.constraint(lessThanOrEqualTo: spawnButton.leadingAnchor, constant: -16),
+            textStack.trailingAnchor.constraint(lessThanOrEqualTo: previewView.leadingAnchor, constant: -AppLayout.cardPreviewSpacing),
 
-            spawnButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
-            spawnButton.centerYAnchor.constraint(equalTo: centerYAnchor),
-            spawnButton.widthAnchor.constraint(equalToConstant: 82)
+            previewView.trailingAnchor.constraint(equalTo: actionStack.leadingAnchor, constant: -AppLayout.cardActionSpacing),
+            previewView.centerYAnchor.constraint(equalTo: centerYAnchor),
+            previewView.widthAnchor.constraint(equalToConstant: AppLayout.cardPreviewSize),
+            previewView.heightAnchor.constraint(equalToConstant: AppLayout.cardPreviewSize),
+
+            actionStack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -AppLayout.cardActionTrailingInset),
+            actionStack.centerYAnchor.constraint(equalTo: centerYAnchor),
+
+            spawnButton.widthAnchor.constraint(equalToConstant: AppLayout.actionColumnWidth),
+            spawnButton.heightAnchor.constraint(equalToConstant: AppLayout.buttonHeight)
         ])
     }
 
-    private func detailText(activeCount: Int) -> String {
-        let activeText = activeCount == 1 ? "1 active" : "\(activeCount) active"
-        return "\(sourceText) - \(package.animationPreset.title) - \(activeText)"
+    private var detailText: String {
+        "\(sourceText) - \(package.animationPreset.title)"
+    }
+
+    private func activeText(count: Int) -> String {
+        AppCopy.activeCount(count)
+    }
+
+    private func badge(text: String) -> NSView {
+        let badge = RoundedPanelView()
+        badge.fillColor = AppTheme.row
+        badge.translatesAutoresizingMaskIntoConstraints = false
+
+        let label = AppTheme.label(text, font: AppTypography.badge, color: AppTheme.secondaryText)
+        label.alignment = .center
+        label.translatesAutoresizingMaskIntoConstraints = false
+
+        badge.addSubview(label)
+
+        NSLayoutConstraint.activate([
+            badge.heightAnchor.constraint(equalToConstant: AppLayout.activeBadgeHeight),
+            badge.widthAnchor.constraint(equalToConstant: AppLayout.actionColumnWidth),
+
+            label.leadingAnchor.constraint(equalTo: badge.leadingAnchor, constant: AppLayout.activeBadgeHorizontalInset),
+            label.trailingAnchor.constraint(equalTo: badge.trailingAnchor, constant: -AppLayout.activeBadgeHorizontalInset),
+            label.centerYAnchor.constraint(equalTo: badge.centerYAnchor)
+        ])
+
+        return badge
+    }
+
+    private func makePreviewView() -> NSView {
+        let previewView = SVGCompanionView(package: package, animationPreset: .idleOnly, animateIdle: true)
+        previewView.translatesAutoresizingMaskIntoConstraints = false
+        return previewView
     }
 
     private var sourceText: String {
